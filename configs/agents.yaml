@@ -1,0 +1,35 @@
+workflow_settings:
+  default_workflow: "proposer_executor_review_loop"
+  logging_db_path: "logs.db"
+
+workflows:
+  proposer_executor_review_loop:
+    name: "Default Self-Improving Loop"
+    description: >
+      A workflow involving a Proposer to suggest actions based on a state,
+      an Executor to perform them, and a PeerReviewer to evaluate the outcome.
+      Interaction data is logged for subsequent DPO fine-tuning of the Proposer.
+
+    agent_sequence:
+      - name: "Proposer"
+        params_ref: "proposer_config"
+      - name: "Executor"
+        params_ref: "executor_config"
+      - name: "PeerReviewer"
+        params_ref: "peer_reviewer_config"
+
+    agent_configs:
+      proposer_config:
+        class_path: "camel.agents.proposer.ProposerAgent"
+        init_args:
+          name: "ProposerAgent_Alpha"
+          llm_model: "{{workflow_settings.default_proposer_model_id}}"
+      executor_config:
+        class_path: "camel.agents.executor.ExecutorAgent"
+        init_args:
+          name: "ExecutorAgent_Main"
+      peer_reviewer_config:
+        class_path: "camel.agents.peer_reviewer.PeerReviewer"
+        init_args:
+          name: "PeerReviewer_GPT4o_Strict"
+          llm_model: "{{workflow_settings.default_reviewer_model_id}}"
