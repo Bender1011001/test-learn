@@ -1,35 +1,66 @@
 workflow_settings:
   default_workflow: "proposer_executor_review_loop"
   logging_db_path: "logs.db"
+  default_proposer_model_id: "mistralai/Mistral-7B-Instruct-v0.2"
+  default_reviewer_model_id: "claude-3-opus-20240229"
+  max_iterations: 10
+
+agents:
+  Proposer:
+    name: "ProposerAgent_Alpha"
+    class_path: "camel.agents.proposer.ProposerAgent"
+    model_id: "mistralai/Mistral-7B-Instruct-v0.2"
+    adapter_id: null
+    parameters:
+      temperature: 0.7
+      max_tokens: 2048
+  
+  Executor:
+    name: "ExecutorAgent_Main"
+    class_path: "camel.agents.executor.ExecutorAgent"
+    parameters:
+      use_system_commands: true
+  
+  PeerReviewer:
+    name: "PeerReviewer_GPT4o_Strict"
+    class_path: "camel.agents.peer_reviewer.PeerReviewer"
+    model_id: "claude-3-opus-20240229"
+    adapter_id: null
+    parameters:
+      temperature: 0.3
+      max_tokens: 1024
 
 workflows:
   proposer_executor_review_loop:
-    name: "Default Self-Improving Loop"
-    description: >
-      A workflow involving a Proposer to suggest actions based on a state,
-      an Executor to perform them, and a PeerReviewer to evaluate the outcome.
-      Interaction data is logged for subsequent DPO fine-tuning of the Proposer.
+    description: "A workflow involving a Proposer to suggest actions based on a state, an Executor to perform them, and a PeerReviewer to evaluate the outcome. Interaction data is logged for subsequent DPO fine-tuning of the Proposer."
+    agent_sequence: ["Proposer", "Executor", "PeerReviewer"]
+    settings:
+      max_iterations: 10
 
-    agent_sequence:
-      - name: "Proposer"
-        params_ref: "proposer_config"
-      - name: "Executor"
-        params_ref: "executor_config"
-      - name: "PeerReviewer"
-        params_ref: "peer_reviewer_config"
-
-    agent_configs:
-      proposer_config:
-        class_path: "camel.agents.proposer.ProposerAgent"
-        init_args:
-          name: "ProposerAgent_Alpha"
-          llm_model: "{{workflow_settings.default_proposer_model_id}}"
-      executor_config:
-        class_path: "camel.agents.executor.ExecutorAgent"
-        init_args:
-          name: "ExecutorAgent_Main"
-      peer_reviewer_config:
-        class_path: "camel.agents.peer_reviewer.PeerReviewer"
-        init_args:
-          name: "PeerReviewer_GPT4o_Strict"
-          llm_model: "{{workflow_settings.default_reviewer_model_id}}"
+saved_adapters:
+  proposer_adapter_1:
+    id: "proposer_adapter_1"
+    name: "Proposer DPO May 2025"
+    base_model_id: "mistralai/Mistral-7B-Instruct-v0.2"
+    creation_date: "2025-05-20"
+    path: "models/proposer_dpo_20250520_1"
+    agent_type: "Proposer"
+    description: "Fine-tuned adapter for better command suggestions"
+  
+  proposer_adapter_2:
+    id: "proposer_adapter_2"
+    name: "Proposer DPO April 2025"
+    base_model_id: "mistralai/Mistral-7B-Instruct-v0.2"
+    creation_date: "2025-04-15"
+    path: "models/proposer_dpo_20250419_1"
+    agent_type: "Proposer"
+    description: "Earlier adapter focusing on clarity of instructions"
+  
+  reviewer_adapter_1:
+    id: "reviewer_adapter_1"
+    name: "Reviewer DPO May 2025"
+    base_model_id: "claude-3-opus-20240229"
+    creation_date: "2025-05-20"
+    path: "models/reviewer_dpo_20250520_1"
+    agent_type: "PeerReviewer"
+    description: "Fine-tuned adapter for more constructive feedback"

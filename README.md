@@ -129,11 +129,26 @@ camel/
 ├── docs/                   # Documentation
 │   └── architecture.md     # Architecture overview
 ├── models/                 # Default directory for trained models
-├── docker-compose.yml      # Docker Compose configuration
+├── docker-compose.yml      # Docker Compose for the full application stack
+├── .container/             # Original CAMEL project container configs (not used for extensions)
 ├── Makefile                # Development utilities
 ├── CONTRIBUTING.md         # Contribution guidelines
 └── ROADMAP.md              # Future development plans
 ```
+
+## Note About Docker Configuration
+
+This project includes two Docker Compose configurations:
+
+1. `docker-compose.yml` at the project root: This is the main Docker configuration for the CAMEL Extensions application, combining the backend API, GUI, database, and Redis.
+
+2. `.container/docker-compose.yaml`: This is from the original CAMEL project and is not used for the Extensions application. It's retained for compatibility with the base CAMEL library development.
+
+When working with CAMEL Extensions, always use the root `docker-compose.yml` file.
+
+## About Future Dependencies
+
+Some packages like Celery and Redis are included in the requirements even though features using them are marked as future enhancements in the ROADMAP.md file. This is to facilitate development and testing of these features as they are implemented.
 
 ## Development with Make
 
