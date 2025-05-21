@@ -52,8 +52,8 @@ class RobustWebSocket:
             if self.ws:
                 try:
                     self.ws.close()
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Error closing existing WebSocket: {e}")
             
             self.ws = websocket.WebSocketApp(
                 self.url,
@@ -90,8 +90,10 @@ class RobustWebSocket:
                 try:
                     self.message_queue.get_nowait()
                     self.message_queue.put_nowait(message)
-                except:
-                    pass
+                except queue.Empty:
+                    logger.warning("Failed to get item from queue that was reported as full")
+                except queue.Full:
+                    logger.warning("Failed to add new message after removing old one")
         except Exception as e:
             logger.error(f"Error handling WebSocket message: {e}")
     
@@ -179,14 +181,14 @@ class RobustWebSocket:
         if self.ws:
             try:
                 self.ws.close()
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Error closing WebSocket: {e}")
         
         # Wait for processing thread to finish
         try:
             self.process_thread.join(timeout=1.0)
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"Error joining processing thread: {e}")
             
         logger.info("WebSocket stopped")
 

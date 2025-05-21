@@ -37,12 +37,19 @@ app = FastAPI(
 )
 
 # Configure CORS
+# Get allowed origins from environment or use default for development
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:8501,http://localhost").split(",")
+if settings["debug"]:
+    # In debug mode, allow all origins with a warning
+    logger.warning("Running in debug mode: CORS is configured to allow all origins")
+    allowed_origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Update with specific origins in production
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Trace-ID"],
 )
 
 # WebSocket connections store

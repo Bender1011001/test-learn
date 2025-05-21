@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, Any, Callable, AsyncGenerator
 import asyncio
 import threading
+import time  # Added import for time.sleep
 from datetime import datetime
 import uuid
 from loguru import logger
@@ -131,8 +132,8 @@ class WorkflowManager:
                     "agent": agent_id
                 }
                 
-                # Simulate processing delay
-                asyncio.run(asyncio.sleep(2))
+                # Simulate processing delay - FIXED: Use synchronous sleep in a thread
+                time.sleep(2)  # Changed from asyncio.run(asyncio.sleep(2))
                 
                 output_data = {
                     "response": f"Simulated response from {agent_id} for goal: {initial_goal}",

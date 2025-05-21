@@ -20,6 +20,12 @@ services:
     depends_on:
       - db
       - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     restart: unless-stopped
 
   db:
@@ -32,6 +38,11 @@ services:
       - POSTGRES_DB=camel_extensions
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   redis:
@@ -40,21 +51,33 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   ui:
-    image: streamlit/streamlit:latest
+    image: streamlit/streamlit:1.28.0  # Pinned version
     ports:
       - "8501:8501"
+      - "8502:8502"  # Port for health endpoint
     volumes:
       - ./gui:/app/gui
-    command: streamlit run gui/app.py
+    command: ["bash", "-c", "pip install fastapi uvicorn && uvicorn gui.health:app --host 0.0.0.0 --port 8502 & streamlit run gui/app.py --server.port=8501 --server.address=0.0.0.0"]
     environment:
       - STREAMLIT_SERVER_PORT=8501
       - STREAMLIT_SERVER_HEADLESS=true
       - API_URL=http://api:8000
     depends_on:
       - api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8502/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     restart: unless-stopped
 
 volumes:
