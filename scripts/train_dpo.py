@@ -5,7 +5,6 @@ Script to fine-tune agents' LLM using Direct Preference Optimization (DPO).
 This script connects to the CAMEL Extensions backend to fetch DPO annotations and generate
 a training dataset for fine-tuning LLMs using Direct Preference Optimization.
 """
-import sys
 import os
 import argparse
 import logging
@@ -15,13 +14,21 @@ from typing import Dict, List, Optional, Tuple, Any
 import json
 import torch
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-# Import backend components
-from backend.db.base import SessionLocal
-from backend.db.models.logs import InteractionLog, DPOAnnotation
-from backend.core.services.config_manager import ConfigManager
+# Using relative imports for maintainability
+# This approach works because the package is installed in development mode
+# and because the script is run from the project root directory
+try:
+    from backend.db.base import SessionLocal
+    from backend.db.models.logs import InteractionLog, DPOAnnotation
+    from backend.core.services.config_manager import ConfigManager
+except ImportError:
+    # Fallback for when script is run directly
+    import sys
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(PROJECT_ROOT))
+    from backend.db.base import SessionLocal
+    from backend.db.models.logs import InteractionLog, DPOAnnotation
+    from backend.core.services.config_manager import ConfigManager
 
 # ML libraries
 from datasets import Dataset

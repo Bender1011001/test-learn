@@ -1,61 +1,68 @@
 import requests
-import json
 import logging
-import uuid
-from typing import Dict, List, Optional, Any, Union
-from tenacity import retry, stop_after_attempt, wait_exponential
+import time
+from typing import Dict, Any, Optional, List, Union
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import streamlit as st
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("api_client")
 
-# Default timeout values (connect_timeout, read_timeout)
-DEFAULT_TIMEOUT = (3, 10)
-
 class APIClient:
-    """Client for interacting with the CAMEL Extensions API."""
+    """Client for interfacing with the CAMEL Extensions API."""
     
-    def __init__(self, base_url: str = "http://localhost:8000/api"):
-        """Initialize API client with base URL."""
-        self.base_url = base_url
-        self.session = requests.Session()
-        self._active_websockets = []
+    def __init__(self, base_url: str = "http://localhost:8000"):
+        """
+        Initialize API client.
+        
+        Args:
+            base_url: Base URL of the API server
+        """
+        self.base_url = base_url.rstrip('/')
         self.logger = logger
+        self.session = requests.Session()
         self.logger.info(f"API client initialized with base URL: {base_url}")
     
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=8))
-    def _request(self, method: str, path: str, **kwargs):
-        """Make HTTP request with automatic retries and logging."""
-        # Ensure headers exist
-        headers = kwargs.get("headers", {})
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type(requests.exceptions.RequestException)
+    )
+    def _request(self, method: str, path: str, **kwargs) -> Dict[str, Any]:
+        """
+        Make a request to the API with retry logic.
         
-        # Add trace ID for request tracing
-        if "X-Trace-ID" not in headers:
-            headers["X-Trace-ID"] = str(uuid.uuid4())
+        Args:
+            method: HTTP method
+            path: API endpoint path
+            **kwargs: Additional arguments to pass to requests
+            
+        Returns:
+            JSON response from API
         
-        kwargs["headers"] = headers
-        url = f"{self.base_url}{path}"
-        
-        self.logger.debug(f"API Request: {method} {url} (Trace: {headers['X-Trace-ID']})")
+        Raises:
+            requests.exceptions.RequestException: If the request fails after retries
+        """
+        url = f"{self.base_url}/{path.lstrip('/')}"
+        self.logger.debug(f"Making {method} request to {url}")
         
         try:
-            response = self.session.request(
-                method,
-                url,
-                timeout=DEFAULT_TIMEOUT,
-                **kwargs
-            )
+            response = self.session.request(method, url, **kwargs)
             response.raise_for_status()
-            self.logger.debug(f"API Response: {response.status_code}")
             return response.json()
         except requests.exceptions.HTTPError as e:
             self.logger.error(f"HTTP error: {e}")
             if e.response is not None:
                 try:
+                    # Try to get JSON error details
                     error_msg = e.response.json().get("detail", str(e))
                     self.logger.error(f"API error detail: {error_msg}")
-                except:
-                    pass
+                except (ValueError, KeyError) as json_err:
+                    # Handle non-JSON error responses
+                    error_text = e.response.text[:500]  # Limit to 500 chars
+                    self.logger.error(f"Non-JSON error response: {error_text}")
+                    error_msg = f"API error (status {e.response.status_code}): {error_text}"
             raise
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Request error: {e}")
@@ -77,231 +84,146 @@ class APIClient:
         """Make DELETE request to API."""
         return self._request("DELETE", path, **kwargs)
     
-    # --- Workflow Endpoints ---
+    def get_health(self) -> Dict[str, Any]:
+        """Get API health status."""
+        try:
+            return self.get("health")
+        except Exception as e:
+            self.logger.error(f"Error checking API health: {e}")
+            return {"status": "error", "message": str(e)}
+    
+    # Workflow Management
     
     def get_available_workflows(self) -> List[Dict[str, Any]]:
-        """Get all available workflow configurations."""
-        return self.get("/workflows/available")
+        """Get available workflow configurations."""
+        return self.get("api/v1/workflows/available")
     
-    def start_workflow(self, workflow_id: str, initial_goal: str) -> str:
-        """
-        Start a new workflow execution.
-        
-        Args:
-            workflow_id: ID of workflow configuration to use
-            initial_goal: Initial goal/objective for the workflow
-            
-        Returns:
-            Workflow run ID
-        """
-        payload = {"workflow_id": workflow_id, "initial_goal": initial_goal}
-        response = self.post("/workflows/start", json=payload)
-        return response["run_id"]
+    def start_workflow(self, workflow_id: str, initial_goal: str) -> Dict[str, Any]:
+        """Start a new workflow execution."""
+        return self.post("api/v1/workflows/start", json={
+            "workflow_id": workflow_id,
+            "initial_goal": initial_goal
+        })
     
     def get_workflow_status(self, run_id: str) -> Dict[str, Any]:
         """Get status of a workflow execution."""
-        return self.get(f"/workflows/status/{run_id}")
+        return self.get(f"api/v1/workflows/{run_id}/status")
     
-    def stop_workflow(self, run_id: str) -> bool:
-        """Stop a running workflow execution."""
-        response = self.post(f"/workflows/stop/{run_id}")
-        return response.get("success", False)
+    def stop_workflow(self, run_id: str) -> Dict[str, Any]:
+        """Stop a running workflow."""
+        return self.post(f"api/v1/workflows/{run_id}/stop")
     
     def get_active_workflows(self) -> List[Dict[str, Any]]:
-        """Get all active workflow executions."""
-        return self.get("/workflows/active")
+        """Get all active workflows."""
+        return self.get("api/v1/workflows/active")
     
-    # --- Config Endpoints ---
+    # Configuration Management
     
-    def get_all_agent_configs(self) -> Dict[str, Any]:
+    def get_config_info(self) -> Dict[str, Any]:
+        """Get configuration information."""
+        return self.get("api/v1/configs/info")
+    
+    def get_agent_configs(self) -> Dict[str, Any]:
         """Get all agent configurations."""
-        response = self.get("/configs/agents")
-        return response.get("agents", {})
+        return self.get("api/v1/configs/agents")
     
-    def get_agent_config(self, agent_id: str) -> Dict[str, Any]:
-        """Get configuration for a specific agent."""
-        return self.get(f"/configs/agents/{agent_id}")
+    def update_agent_config(self, agent_id: str, config_update: Dict[str, Any]) -> Dict[str, Any]:
+        """Update a specific agent configuration."""
+        return self.put(f"api/v1/configs/agents/{agent_id}", json=config_update)
     
-    def update_agent_config(self, agent_id: str, config_updates: Dict[str, Any]) -> bool:
-        """Update configuration for a specific agent."""
-        response = self.put(f"/configs/agents/{agent_id}", json=config_updates)
-        return response.get("success", False)
+    def get_saved_adapters(self, agent_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get saved DPO adapters, optionally filtered by agent type."""
+        params = {"agent_type": agent_type} if agent_type else None
+        return self.get("api/v1/configs/adapters", params=params)
     
-    def get_workflow_settings(self) -> Dict[str, Any]:
-        """Get global workflow settings."""
-        return self.get("/configs/settings")
+    # Log Management
     
-    def get_all_adapters(self, agent_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_logs(self, 
+                 workflow_run_id: Optional[str] = None,
+                 agent_name: Optional[str] = None,
+                 agent_type: Optional[str] = None,
+                 start_time: Optional[str] = None,
+                 end_time: Optional[str] = None,
+                 limit: int = 100,
+                 offset: int = 0) -> Dict[str, Any]:
         """
-        Get all saved DPO adapters.
+        Get logs with optional filtering.
         
         Args:
-            agent_type: Optional filter by agent type
-        """
-        params = {}
-        if agent_type:
-            params["agent_type"] = agent_type
-        return self.get("/configs/adapters", params=params)
-    
-    def reload_config(self) -> bool:
-        """Reload configuration from file."""
-        response = self.post("/configs/reload")
-        return response.get("success", False)
-    
-    # --- Log Endpoints ---
-    
-    def get_logs(
-        self, 
-        workflow_id: Optional[str] = None,
-        agent_name: Optional[str] = None,
-        agent_type: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        has_annotation: Optional[bool] = None,
-        keyword: Optional[str] = None,
-        offset: int = 0,
-        limit: int = 100,
-        sort_by: str = "timestamp",
-        sort_desc: bool = True
-    ) -> List[Dict[str, Any]]:
-        """
-        Get logs with various filters.
-        
-        Args:
-            workflow_id: Filter by workflow run ID
-            agent_name: Filter by agent name
-            agent_type: Filter by agent type
-            start_date: Filter by timestamp >= start_date (ISO format)
-            end_date: Filter by timestamp <= end_date (ISO format)
-            has_annotation: Filter for logs with/without annotations
-            keyword: Search for keyword in input/output data
-            offset: Query offset for pagination
-            limit: Query limit for pagination
-            sort_by: Field to sort by
-            sort_desc: Whether to sort descending
+            workflow_run_id: Optional workflow run ID filter
+            agent_name: Optional agent name filter
+            agent_type: Optional agent type filter
+            start_time: Optional start time filter (ISO format)
+            end_time: Optional end time filter (ISO format)
+            limit: Maximum number of logs to return
+            offset: Offset for pagination
+            
+        Returns:
+            Dictionary with logs and total count
         """
         params = {
-            "offset": offset,
             "limit": limit,
-            "sort_by": sort_by,
-            "sort_desc": str(sort_desc).lower()
+            "offset": offset
         }
-        
-        if workflow_id:
-            params["workflow_id"] = workflow_id
+        if workflow_run_id:
+            params["workflow_run_id"] = workflow_run_id
         if agent_name:
             params["agent_name"] = agent_name
         if agent_type:
             params["agent_type"] = agent_type
-        if start_date:
-            params["start_date"] = start_date
-        if end_date:
-            params["end_date"] = end_date
-        if has_annotation is not None:
-            params["has_annotation"] = str(has_annotation).lower()
-        if keyword:
-            params["keyword"] = keyword
-        
-        return self.get("/logs", params=params)
-    
-    def get_logs_summary(self) -> Dict[str, Any]:
-        """Get summary statistics about logs."""
-        return self.get("/logs/summary")
-    
-    def get_log_by_id(self, log_id: int) -> Dict[str, Any]:
-        """Get a specific log entry by ID."""
-        return self.get(f"/logs/{log_id}")
-    
-    def get_annotation(self, log_id: int) -> Optional[Dict[str, Any]]:
-        """Get annotation for a specific log entry."""
-        try:
-            return self.get(f"/logs/{log_id}/annotation")
-        except requests.exceptions.HTTPError as e:
-            if e.response and e.response.status_code == 404:
-                return None
-            raise
-    
-    def save_annotation(self, annotation_data: Dict[str, Any]) -> int:
-        """
-        Save or update an annotation for a log entry.
-        
-        Args:
-            annotation_data: Dictionary with annotation data, must include log_entry_id
-        
-        Returns:
-            Annotation ID
-        """
-        response = self.post("/logs/annotations", json=annotation_data)
-        return response.get("id")
-    
-    def delete_annotation(self, annotation_id: int) -> bool:
-        """Delete an annotation."""
-        response = self.delete(f"/logs/annotations/{annotation_id}")
-        return response.get("success", False)
-    
-    # --- DPO Training Endpoints ---
-    
-    def start_dpo_training(
-        self, 
-        agent_type: str, 
-        base_model_id: str, 
-        adapter_name: str, 
-        training_args: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """
-        Start a new DPO training job.
-        
-        Args:
-            agent_type: Type of agent to train (e.g., 'proposer')
-            base_model_id: ID of base model to fine-tune
-            adapter_name: Name for the new adapter
-            training_args: Optional override for default training arguments
+        if start_time:
+            params["start_time"] = start_time
+        if end_time:
+            params["end_time"] = end_time
             
-        Returns:
-            Job ID
-        """
-        payload = {
+        return self.get("api/v1/logs", params=params)
+    
+    def get_log_entry(self, log_id: int) -> Dict[str, Any]:
+        """Get a specific log entry by ID."""
+        return self.get(f"api/v1/logs/{log_id}")
+    
+    def add_dpo_annotation(self, 
+                          log_id: int, 
+                          rating: int,
+                          rationale: str, 
+                          chosen_prompt: str, 
+                          rejected_prompt: str,
+                          dpo_context: str) -> Dict[str, Any]:
+        """Add a DPO annotation to a log entry."""
+        return self.post(f"api/v1/logs/{log_id}/annotate", json={
+            "rating": rating,
+            "rationale": rationale,
+            "chosen_prompt": chosen_prompt,
+            "rejected_prompt": rejected_prompt,
+            "dpo_context": dpo_context
+        })
+    
+    # DPO Training
+    
+    def get_dpo_ready_annotations(self, agent_type: str) -> Dict[str, Any]:
+        """Get information about DPO-ready annotations for an agent type."""
+        return self.get(f"api/v1/dpo/annotations/{agent_type}")
+    
+    def start_dpo_training(self, 
+                          agent_type: str,
+                          base_model_id: str,
+                          adapter_name: str,
+                          training_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Start a DPO training job."""
+        json_data = {
             "agent_type": agent_type,
             "base_model_id": base_model_id,
-            "adapter_name": adapter_name,
+            "adapter_name": adapter_name
         }
-        
-        if training_args:
-            payload["training_args"] = training_args
-        
-        response = self.post("/dpo/start", json=payload)
-        return response["job_id"]
+        if training_params:
+            json_data["training_params"] = training_params
+            
+        return self.post("api/v1/dpo/train", json=json_data)
     
-    def get_training_job_status(self, job_id: str) -> Dict[str, Any]:
+    def get_dpo_job_status(self, job_id: str) -> Dict[str, Any]:
         """Get the status of a DPO training job."""
-        return self.get(f"/dpo/status/{job_id}")
+        return self.get(f"api/v1/dpo/jobs/{job_id}")
     
-    def get_training_job_output(self, job_id: str, max_lines: int = 100) -> List[str]:
-        """Get the output logs of a DPO training job."""
-        response = self.get(f"/dpo/output/{job_id}", params={"max_lines": max_lines})
-        return response.get("output", [])
-    
-    def cancel_training_job(self, job_id: str) -> bool:
-        """Cancel a running DPO training job."""
-        response = self.post(f"/dpo/cancel/{job_id}")
-        return response.get("success", False)
-    
-    def get_active_training_jobs(self) -> List[Dict[str, Any]]:
-        """Get all active DPO training jobs."""
-        return self.get("/dpo/active")
-    
-    def get_training_summary(self) -> Dict[str, Any]:
-        """Get summary statistics about DPO training jobs."""
-        return self.get("/dpo/summary")
-    
-    def close(self):
-        """Close the API client and any associated resources."""
-        # Close any active WebSocket connections
-        for ws in self._active_websockets:
-            try:
-                ws.close()
-            except Exception as e:
-                self.logger.error(f"Error closing WebSocket: {e}")
-        
-        self.session.close()
-        self.logger.info("API client closed")
+    def cancel_dpo_job(self, job_id: str) -> Dict[str, Any]:
+        """Cancel a DPO training job."""
+        return self.post(f"api/v1/dpo/jobs/{job_id}/cancel")

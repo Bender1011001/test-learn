@@ -133,6 +133,11 @@ class WorkflowManager:
                 }
                 
                 # Simulate processing delay - FIXED: Use synchronous sleep in a thread
+                # NOTE: In a production environment with many concurrent workflows, extensive use of
+                # time.sleep() in backend services can lead to thread pool exhaustion. For a real implementation:
+                # 1. Consider using async processing with proper task scheduling
+                # 2. Implement workload distribution with Celery or similar task queue system
+                # 3. Monitor thread pool utilization and implement circuit breakers
                 time.sleep(2)  # Changed from asyncio.run(asyncio.sleep(2))
                 
                 output_data = {

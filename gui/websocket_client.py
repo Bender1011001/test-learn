@@ -4,7 +4,8 @@ import queue
 import time
 import json
 import logging
-from typing import Callable, Dict, Any, Optional, List
+import random
+from typing import Callable, Dict, Any, Optional, List, Union
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -34,16 +35,22 @@ class RobustWebSocket:
         self.reconnect_delay = 1  # Start with 1 second delay
         self.max_reconnect_delay = 300  # Maximum 5 minutes
         self.stop_event = threading.Event()
+        self.connect_lock = threading.Lock()
         
         # Start message processing thread
         self.process_thread = threading.Thread(target=self._process_messages)
         self.process_thread.daemon = True
         self.process_thread.start()
         
-        # Connect
-        self._connect()
+        # Start connection in a separate thread to avoid blocking GUI
+        threading.Thread(target=self._connect_in_thread, daemon=True).start()
         
         logger.info(f"WebSocket initialized for {url}")
+    
+    def _connect_in_thread(self):
+        """Run _connect in a separate thread to avoid blocking the GUI thread."""
+        with self.connect_lock:
+            self._connect()
     
     def _connect(self):
         """Establish WebSocket connection."""
@@ -115,21 +122,22 @@ class RobustWebSocket:
         self.reconnect_delay = 1  # Reset reconnect delay
     
     def _schedule_reconnect(self):
-        """Schedule reconnection with exponential backoff."""
+        """Schedule reconnection with exponential backoff and jitter."""
         if not self.should_reconnect or self.stop_event.is_set():
             return
             
-        logger.info(f"Reconnecting in {self.reconnect_delay} seconds...")
-        time.sleep(self.reconnect_delay)
+        # Add jitter to avoid thundering herd problem
+        jitter_factor = random.uniform(0.8, 1.2)  # ±20% jitter
+        delay_with_jitter = self.reconnect_delay * jitter_factor
         
-        # Exponential backoff with jitter
-        jitter = self.reconnect_delay * 0.1  # 10% jitter
+        logger.info(f"Reconnecting in {delay_with_jitter:.2f} seconds...")
+        time.sleep(delay_with_jitter)
+        
+        # Exponential backoff
         self.reconnect_delay = min(self.reconnect_delay * 2, self.max_reconnect_delay)
-        # Add jitter to avoid thundering herd problem if multiple clients reconnect
-        self.reconnect_delay += (jitter * (time.time() % 1))
         
-        # Try to reconnect
-        self._connect()
+        # Reconnect in a separate thread to avoid blocking
+        threading.Thread(target=self._connect_in_thread, daemon=True).start()
     
     def _process_messages(self):
         """Process messages from the queue and deliver to user callback."""
@@ -151,12 +159,13 @@ class RobustWebSocket:
             
         logger.info("WebSocket message processor stopped")
     
-    def send(self, message: Dict[str, Any]) -> bool:
+    def send(self, message: Union[Dict[str, Any], str]) -> bool:
         """
         Send a message through the WebSocket.
         
         Args:
-            message: Dictionary to be JSON-serialized and sent
+            message: Either a dictionary to be JSON-serialized and sent,
+                    or a string to be sent directly as a text message
         
         Returns:
             Success or failure
@@ -166,7 +175,11 @@ class RobustWebSocket:
             return False
         
         try:
-            self.ws.send(json.dumps(message))
+            # Handle both dictionary and string messages
+            if isinstance(message, dict):
+                self.ws.send(json.dumps(message))
+            else:
+                self.ws.send(str(message))
             return True
         except Exception as e:
             logger.error(f"Error sending WebSocket message: {e}")
