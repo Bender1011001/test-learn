@@ -1,80 +1,183 @@
-# CAMEL Extensions GUI
+# CAMEL Extensions
 
-This project provides a Streamlit-based Graphical User Interface (GUI) for managing, observing, and improving CAMEL AI agents. It focuses on facilitating workflows like the proposer-executor loop and streamlining the Direct Preference Optimization (DPO) training process.
+This project provides a comprehensive system for managing, observing, and improving CAMEL AI agents. It includes a FastAPI backend and Streamlit GUI frontend, focusing on facilitating workflows like the proposer-executor loop and streamlining the Direct Preference Optimization (DPO) training process.
 
-## Features (MVP)
+![CAMEL Logo](misc/logo_light.png)
 
-*   **Workflow Execution:** Initiate and observe pre-defined CAMEL agent workflows in real-time.
-*   **Configuration Management:** View and modify configurations for agents and workflows (e.g., LLM models, adapters) via a user-friendly interface.
-*   **Log Exploration & Annotation:** Review historical agent interactions and create preference data for DPO training.
-*   **DPO Training Initiation:** Configure and start DPO training runs for agents using annotated data.
+## Features
+
+- **Workflow Execution:** Initiate and observe pre-defined CAMEL agent workflows in real-time
+- **Configuration Management:** View and modify configurations for agents and workflows via a user-friendly interface
+- **Log Exploration & Annotation:** Review historical agent interactions and create preference data for DPO training
+- **DPO Training:** Configure and start DPO training runs for agents using annotated data
+- **Real-time Updates:** WebSocket connections for live workflow and training monitoring
+- **API Backend:** RESTful API for programmatic access to all functionality
+
+## Architecture Overview
+
+This project follows a modern architecture with a clear separation between frontend and backend:
+
+- **Frontend**: Streamlit-based GUI with API client integration
+- **Backend**: FastAPI server providing RESTful endpoints and WebSocket connections
+- **Database**: SQLAlchemy ORM with migrations (Alembic) supporting SQLite or PostgreSQL
+- **Services**: Core business logic services for configuration, workflows, database, and DPO training
+
+See the [architecture documentation](docs/architecture.md) for a detailed overview.
 
 ## Setup Instructions
 
 ### Prerequisites
 
-* Python 3.10-3.12 (camel-ai is not compatible with Python 3.13+)
-* pip (for installing dependencies)
+- Python 3.10 or 3.11 (camel-ai is not compatible with Python 3.12+)
+- pip (for installing dependencies)
+- Docker and Docker Compose (optional, for containerized deployment)
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/Bender1011001/test-learn.git
-    cd test-learn 
-    ```
-    (Note: If your local project directory is still named `camel`, navigate into that instead of `test-learn` after cloning).
+### Quick Start with Docker
 
-2.  **Create and activate a Python virtual environment:**
-    It is highly recommended to use a virtual environment.
-    ```bash
-    python -m venv venv
-    ```
-    *   On Windows:
-        ```bash
-        .\venv\Scripts\activate
-        ```
-    *   On macOS/Linux:
-        ```bash
-        source venv/bin/activate
-        ```
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/camel-ai/camel.git
+   cd camel
+   ```
 
-3.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-    > **Note:** The camel-ai library requires Python 3.10-3.12 and is not compatible with Python 3.13+. If you encounter installation errors, please ensure you're using a compatible Python version.
+2. Start the application using Docker Compose:
+   ```bash
+   docker-compose up
+   ```
 
-4.  **API Keys (Optional but Recommended):**
-    Set up necessary API keys as environment variables (e.g., `OPENAI_API_KEY`). The specific keys required will depend on the Large Language Models (LLMs) you configure for your agents in `configs/agents.yaml`.
+3. Access the application:
+   - Frontend: http://localhost:8501
+   - Backend API: http://localhost:8000
+   - API Documentation: http://localhost:8000/docs
 
-## Running the Application
+### Local Development Setup
 
-Once the setup is complete, you can run the Streamlit application:
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/camel-ai/camel.git
+   cd camel
+   ```
 
-```bash
-streamlit run gui/app.py
-```
+2. Create and activate a Python virtual environment:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+   ```
 
-This will typically open the GUI in your default web browser.
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Set up environment variables (optional):
+   ```bash
+   cp .env.example .env
+   # Edit .env file with your settings
+   ```
+
+5. Initialize the database:
+   ```bash
+   cd backend
+   alembic upgrade head
+   ```
+
+6. Load demo data (optional):
+   ```bash
+   python backend/scripts/load_demo_data.py
+   ```
+
+7. Start the backend:
+   ```bash
+   cd backend
+   uvicorn api.main:app --reload
+   ```
+
+8. Start the frontend (in a new terminal):
+   ```bash
+   streamlit run gui/app.py
+   ```
+
+9. Access the application:
+   - Frontend: http://localhost:8501
+   - Backend API: http://localhost:8000
+   - API Documentation: http://localhost:8000/docs
+
+### API Keys (Optional)
+
+Set up necessary API keys as environment variables (e.g., `OPENAI_API_KEY`). The specific keys required will depend on the Large Language Models (LLMs) you configure for your agents in `configs/agents.yaml`.
 
 ## Project Structure
 
-*   `gui/`: Contains the Streamlit application code.
-    *   `app.py`: Main application entry point and session state management.
-    *   `views/`: Individual page views (Dashboard, Configuration, Log Explorer, DPO Training, Settings).
-*   `configs/`: Holds configuration files.
-    *   `agents.yaml`: Defines agent settings, workflow sequences, and LLM configurations.
-*   `scripts/`: Contains utility and operational scripts.
-    *   `train_dpo.py`: Script for DPO fine-tuning (to be adapted/used by the GUI).
-*   `models/`: Default directory where trained DPO adapters will be saved by the training script.
-*   `logs/`: Default directory for storing application logs, including interaction logs (e.g., `camel_logs.db`) and annotations (e.g., `annotations.db`).
-*   `requirements.txt`: Lists Python dependencies for the project.
-*   `.gitignore`: Specifies intentionally untracked files that Git should ignore.
-*   `README.md`: This file.
+```
+camel/
+├── backend/                # Backend API and services
+│   ├── api/                # FastAPI application
+│   │   ├── routers/        # API endpoints
+│   │   └── main.py         # API entry point
+│   ├── core/               # Core business logic
+│   │   └── services/       # Service implementations
+│   ├── db/                 # Database models and access
+│   │   └── models/         # SQLAlchemy models
+│   └── migrations/         # Alembic migrations
+├── configs/                # Configuration files
+│   └── agents.yaml         # Agent configuration
+├── gui/                    # Frontend Streamlit application
+│   ├── views/              # UI view components
+│   ├── api_client.py       # API client for backend communication
+│   ├── websocket_client.py # WebSocket client for real-time updates
+│   └── app.py              # GUI entry point
+├── docs/                   # Documentation
+│   └── architecture.md     # Architecture overview
+├── models/                 # Default directory for trained models
+├── docker-compose.yml      # Docker Compose configuration
+├── Makefile                # Development utilities
+├── CONTRIBUTING.md         # Contribution guidelines
+└── ROADMAP.md              # Future development plans
+```
+
+## Development with Make
+
+For easier development, we provide a Makefile with common tasks:
+
+```bash
+# Setup dependencies
+make setup
+
+# Start both API and GUI in development mode
+make run-all
+
+# Start only API in development mode
+make dev-api
+
+# Start only GUI in development mode
+make dev-gui
+
+# Load demo data
+make fixtures
+
+# Run tests
+make test
+
+# Run end-to-end tests
+make e2e
+
+# Clean up temporary files
+make clean
+```
+
+## API Documentation
+
+When the backend is running, you can access the API documentation:
+
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
 
 ## Contributing
 
-Contributions are welcome! Please refer to `CONTRIBUTING.md` (to be created) for guidelines.
+We welcome contributions! Please read our [Contributing Guidelines](CONTRIBUTING.md) before submitting a pull request.
+
+See the [Roadmap](ROADMAP.md) for information about planned features and improvements.
 
 ## License
 
-This project is licensed under the Apache 2.0 License. See the `LICENSE` file in the root directory for more details.
+This project is licensed under the Apache 2.0 License. See the `LICENSE` file for details.

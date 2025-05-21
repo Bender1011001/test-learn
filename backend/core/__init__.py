@@ -1,0 +1,1 @@
+# CAMEL Extensions Core Package

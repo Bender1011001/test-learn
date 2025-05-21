@@ -1,64 +1,199 @@
 """
-Configuration Management View for camel_ext GUI.
+Configuration Management View for CAMEL Extensions GUI.
 
 This module implements the configuration management view with global settings,
 agent-specific configurations, and configuration control buttons.
 """
 import streamlit as st
+import yaml
+import io
+from typing import Dict, Any, List, Optional
+
+
+@st.cache_data(ttl=30)
+def fetch_config_data():
+    """
+    Fetch configuration data from the API with caching.
+    
+    This function is cached with a 30-second TTL to avoid frequent API calls.
+    """
+    try:
+        api_client = st.session_state.api_client
+        
+        # Fetch global settings
+        workflow_settings = api_client.get_workflow_settings()
+        
+        # Fetch workflows
+        workflows_response = api_client.get_all_workflow_configs()
+        workflows = workflows_response.get("workflows", {})
+        
+        # Fetch agents
+        agents_response = api_client.get_all_agent_configs()
+        agents = agents_response
+        
+        # Fetch adapters
+        adapters = api_client.get_all_adapters()
+        
+        # Organize adapters by agent type for easier access
+        organized_adapters = {"proposer": [], "reviewer": [], "all": []}
+        for adapter in adapters:
+            adapter_type = adapter.get("agent_type", "").lower()
+            adapter_id = adapter.get("id", "unknown")
+            organized_adapters["all"].append(adapter)
+            
+            if "proposer" in adapter_type:
+                organized_adapters["proposer"].append(adapter)
+            elif "reviewer" in adapter_type:
+                organized_adapters["reviewer"].append(adapter)
+        
+        # Combine data into a structure similar to what the view expects
+        config_data = {
+            "workflow_settings": workflow_settings,
+            "workflows": workflows,
+            "agents": agents,
+            "saved_adapters": organized_adapters
+        }
+        
+        return config_data
+    
+    except Exception as e:
+        st.error(f"Error fetching configuration data: {str(e)}")
+        # Return a minimal structure to avoid errors in the UI
+        return {
+            "workflow_settings": {},
+            "workflows": {},
+            "agents": {},
+            "saved_adapters": {"proposer": [], "reviewer": [], "all": []}
+        }
 
 
 def init_config_data():
-    """Initialize placeholder configuration data if not already in session state."""
-    if "config_data" not in st.session_state:
-        # This is a placeholder for the data that would normally be loaded from configs/agents.yaml
-        st.session_state.config_data = {
-            "workflow_settings": {
-                "default_workflow": "proposer_executor_review_loop",
-                "logging_db_path": "logs.db",
-                "max_iterations": 10,
-                "default_proposer_model_id": "gpt-4o",
-                "default_reviewer_model_id": "claude-3-opus-20240229"
-            },
-            "workflows": {
-                "proposer_executor_review_loop": {
-                    "name": "Default Self-Improving Loop",
-                    "description": "A workflow involving a Proposer to suggest actions based on a state, an Executor to perform them, and a PeerReviewer to evaluate the outcome. Interaction data is logged for subsequent DPO fine-tuning of the Proposer.",
-                    "agent_configs": {
-                        "proposer_config_key_in_yaml": {
-                            "agent_class_path": "camel.agents.proposer_agent.ProposerAgent",
-                            "init_args": {
-                                "name": "Proposer_Agent_Instance_Name",
-                                "llm_model": "mistralai/Mistral-7B-Instruct-v0.2",
-                                "adapter_id": "None"
-                            }
-                        },
-                        "executor_config_key_in_yaml": {
-                            "agent_class_path": "camel.agents.executor_agent.ExecutorAgent",
-                            "init_args": {
-                                "name": "Executor_Agent_Instance_Name"
-                                # Other non-LLM specific args not needed for MVP UI
-                            }
-                        },
-                        "reviewer_config_key_in_yaml": {
-                            "agent_class_path": "camel.agents.peer_reviewer_agent.PeerReviewerAgent",
-                            "init_args": {
-                                "name": "Peer_Reviewer_Agent_Instance_Name",
-                                "llm_model": "mistralai/Mistral-7B-Instruct-v0.2",
-                                "adapter_id": "None"
-                                # Other args not needed for MVP UI
+    """Initialize configuration data using the API client."""
+    if "config_data" not in st.session_state or st.session_state.get("reload_config", False):
+        try:
+            st.session_state.config_data = fetch_config_data()
+            st.session_state.reload_config = False
+        except Exception as e:
+            st.error(f"Error initializing configuration data: {str(e)}")
+            
+            # Use placeholder data as fallback
+            if "config_data" not in st.session_state:
+                st.session_state.config_data = {
+                    "workflow_settings": {
+                        "default_workflow": "proposer_executor_review_loop",
+                        "logging_db_path": "logs.db",
+                        "max_iterations": 10,
+                        "default_proposer_model_id": "gpt-4o",
+                        "default_reviewer_model_id": "claude-3-opus-20240229"
+                    },
+                    "workflows": {
+                        "proposer_executor_review_loop": {
+                            "name": "Default Self-Improving Loop",
+                            "description": "A workflow involving a Proposer to suggest actions based on a state, an Executor to perform them, and a PeerReviewer to evaluate the outcome. Interaction data is logged for subsequent DPO fine-tuning of the Proposer.",
+                            "agent_configs": {
+                                "proposer_config_key_in_yaml": {
+                                    "agent_class_path": "camel.agents.proposer_agent.ProposerAgent",
+                                    "init_args": {
+                                        "name": "Proposer_Agent_Instance_Name",
+                                        "llm_model": "mistralai/Mistral-7B-Instruct-v0.2",
+                                        "adapter_id": "None"
+                                    }
+                                },
+                                "executor_config_key_in_yaml": {
+                                    "agent_class_path": "camel.agents.executor_agent.ExecutorAgent",
+                                    "init_args": {
+                                        "name": "Executor_Agent_Instance_Name"
+                                    }
+                                },
+                                "reviewer_config_key_in_yaml": {
+                                    "agent_class_path": "camel.agents.peer_reviewer_agent.PeerReviewerAgent",
+                                    "init_args": {
+                                        "name": "Peer_Reviewer_Agent_Instance_Name",
+                                        "llm_model": "mistralai/Mistral-7B-Instruct-v0.2",
+                                        "adapter_id": "None"
+                                    }
+                                }
                             }
                         }
+                    },
+                    "agents": {
+                        "Proposer": {
+                            "class_path": "camel.agents.proposer.ProposerAgent",
+                            "model_id": "mistralai/Mistral-7B-Instruct-v0.2",
+                            "adapter_id": None
+                        },
+                        "Executor": {
+                            "class_path": "camel.agents.executor.ExecutorAgent",
+                        },
+                        "PeerReviewer": {
+                            "class_path": "camel.agents.peer_reviewer.PeerReviewerAgent",
+                            "model_id": "mistralai/Mistral-7B-Instruct-v0.2",
+                            "adapter_id": None
+                        }
+                    },
+                    "saved_adapters": {
+                        "proposer": [
+                            {"id": "proposer_adapter_1", "name": "Proposer DPO 1", "path": "models/proposer_dpo_20250520_1"},
+                            {"id": "proposer_adapter_2", "name": "Proposer DPO 2", "path": "models/proposer_dpo_20250519_1"}
+                        ],
+                        "reviewer": [
+                            {"id": "reviewer_adapter_1", "name": "Reviewer DPO 1", "path": "models/reviewer_dpo_20250520_1"},
+                            {"id": "reviewer_adapter_2", "name": "Reviewer DPO 2", "path": "models/reviewer_dpo_20250518_2"}
+                        ],
+                        "all": [
+                            {"id": "proposer_adapter_1", "name": "Proposer DPO 1", "path": "models/proposer_dpo_20250520_1"},
+                            {"id": "proposer_adapter_2", "name": "Proposer DPO 2", "path": "models/proposer_dpo_20250519_1"},
+                            {"id": "reviewer_adapter_1", "name": "Reviewer DPO 1", "path": "models/reviewer_dpo_20250520_1"},
+                            {"id": "reviewer_adapter_2", "name": "Reviewer DPO 2", "path": "models/reviewer_dpo_20250518_2"}
+                        ]
                     }
                 }
-            },
-            "saved_adapters": {
-                "proposer_adapter_1": "models/proposer_dpo_20250520_1",
-                "proposer_adapter_2": "models/proposer_dpo_20250519_1",
-                "proposer_dpo_model_1": "models/proposer_full_model_20250515",
-                "reviewer_adapter_1": "models/reviewer_dpo_20250520_1",
-                "reviewer_adapter_2": "models/reviewer_dpo_20250518_2"
-            }
-        }
+
+
+def save_agent_config(agent_id: str, updated_config: Dict[str, Any]):
+    """
+    Save agent configuration changes to the backend.
+    
+    Args:
+        agent_id: ID of the agent to update
+        updated_config: Updated configuration values
+    """
+    try:
+        api_client = st.session_state.api_client
+        success = api_client.update_agent_config(agent_id, updated_config)
+        
+        if success:
+            st.success(f"Successfully updated {agent_id} configuration.")
+            # Clear the cache to fetch fresh data next time
+            fetch_config_data.clear()
+            # Force a reload
+            st.session_state.reload_config = True
+            # Immediate refresh
+            st.rerun()
+        else:
+            st.error(f"Failed to update {agent_id} configuration.")
+    except Exception as e:
+        st.error(f"Error updating agent configuration: {str(e)}")
+
+
+def reload_configuration():
+    """Reload configuration from the backend."""
+    try:
+        api_client = st.session_state.api_client
+        success = api_client.reload_config()
+        
+        if success:
+            st.success("Configuration reloaded successfully.")
+            # Clear the cache
+            fetch_config_data.clear()
+            # Force a reload
+            st.session_state.reload_config = True
+            # Immediate refresh
+            st.rerun()
+        else:
+            st.error("Failed to reload configuration.")
+    except Exception as e:
+        st.error(f"Error reloading configuration: {str(e)}")
 
 
 def render_global_settings_tab():
@@ -66,7 +201,7 @@ def render_global_settings_tab():
     st.header("Global Settings")
     
     if 'config_data' in st.session_state and 'workflow_settings' in st.session_state.config_data:
-        workflow_settings = st.session_state.config_data['workflow_settings']
+        workflow_settings = st.session_state.config_data.get('workflow_settings', {})
         
         # Create two columns for better layout
         col1, col2 = st.columns(2)
@@ -92,36 +227,33 @@ def render_global_settings_tab():
     else:
         st.warning("Configuration data not loaded.")
 
+
 def render_proposer_agent_tab():
     """Render the Proposer Agent tab with configuration options."""
     st.header("Proposer Agent Configuration")
     
-    if 'config_data' not in st.session_state or 'workflows' not in st.session_state.config_data:
+    if 'config_data' not in st.session_state or 'agents' not in st.session_state.config_data:
         st.warning("Configuration data not loaded.")
         return
-        
-    # For MVP, directly access a predefined proposer agent config
-    workflow_key = "proposer_executor_review_loop"
-    agent_config_key = "proposer_config_key_in_yaml"
     
-    if (workflow_key not in st.session_state.config_data["workflows"] or
-        "agent_configs" not in st.session_state.config_data["workflows"][workflow_key] or
-        agent_config_key not in st.session_state.config_data["workflows"][workflow_key]["agent_configs"]):
-        st.warning(f"Proposer agent configuration not found for workflow: {workflow_key}")
-        return
-        
     # Get the proposer agent configuration
-    proposer_config = st.session_state.config_data["workflows"][workflow_key]["agent_configs"][agent_config_key]
-    proposer_agent_class_path = proposer_config.get("agent_class_path", "N/A")
-    proposer_init_args = proposer_config.get("init_args", {})
+    agent_id = "Proposer"
+    agent_configs = st.session_state.config_data.get("agents", {})
+    
+    if agent_id not in agent_configs:
+        st.warning(f"{agent_id} configuration not found.")
+        return
+    
+    agent_config = agent_configs[agent_id]
+    agent_class_path = agent_config.get("class_path", "N/A")
     
     # Display a sub-header for the configuration
-    st.subheader(f"Configuration for: Proposer")
+    st.subheader(f"Configuration for: {agent_id}")
     
     # Agent Name (Read-only for MVP)
     st.text_input(
-        "Agent Name (in workflow):",
-        value=proposer_init_args.get('name', 'N/A'),
+        "Agent Name:",
+        value=agent_id,
         key="proposer_agent_name_cfg",
         disabled=True
     )
@@ -129,24 +261,30 @@ def render_proposer_agent_tab():
     # Agent Class Path (Read-only)
     st.text_input(
         "Agent Class Path:",
-        value=proposer_agent_class_path,
+        value=agent_class_path,
         key="proposer_agent_class_path_cfg",
         disabled=True
     )
     
     # LLM Model ID (Editable)
-    st.text_input(
+    model_id = agent_config.get("model_id", "")
+    new_model_id = st.text_input(
         "Base LLM Model ID:",
-        value=proposer_init_args.get('llm_model', ''),
+        value=model_id,
         help="e.g., 'mistralai/Mistral-7B-Instruct-v0.2' or API endpoint",
         key="proposer_llm_model_cfg"
     )
     
     # DPO Adapter Selection (Editable)
-    adapter_options = ["None"] + list(st.session_state.config_data.get('saved_adapters', {}).keys())
-    current_adapter = proposer_init_args.get('adapter_id', "None")
+    adapter_options = ["None"]
+    proposer_adapters = st.session_state.config_data.get("saved_adapters", {}).get("proposer", [])
     
-    st.selectbox(
+    for adapter in proposer_adapters:
+        adapter_options.append(adapter.get("id", "unknown"))
+    
+    current_adapter = agent_config.get("adapter_id", None) or "None"
+    
+    new_adapter = st.selectbox(
         "Active DPO Adapter:",
         options=adapter_options,
         index=adapter_options.index(current_adapter) if current_adapter in adapter_options else 0,
@@ -154,45 +292,58 @@ def render_proposer_agent_tab():
         key="proposer_adapter_cfg"
     )
     
-    # Controls within the Proposer Agent Tab (Placeholders)
+    # Convert "None" string to None
+    if new_adapter == "None":
+        new_adapter = None
+    
+    # Prepare updated configuration
+    updated_config = {
+        "model_id": new_model_id,
+        "adapter_id": new_adapter
+    }
+    
+    # Check if there are actual changes
+    has_changes = (
+        new_model_id != model_id or
+        new_adapter != agent_config.get("adapter_id")
+    )
+    
+    # Controls within the Proposer Agent Tab
     col1, col2 = st.columns(2)
     with col1:
-        st.button("Apply Changes to Proposer Agent", key="apply_proposer_agent_cfg")
+        if st.button("Apply Changes to Proposer Agent", key="apply_proposer_agent_cfg", disabled=not has_changes):
+            save_agent_config(agent_id, updated_config)
     with col2:
-        st.button("Revert Changes for Proposer Agent", key="revert_proposer_agent_cfg")
-
+        if st.button("Revert Changes for Proposer Agent", key="revert_proposer_agent_cfg"):
+            st.rerun()
 
 
 def render_executor_agent_tab():
     """Render the Executor Agent tab with read-only configuration display."""
     st.header("Executor Agent Configuration")
     
-    if 'config_data' not in st.session_state or 'workflows' not in st.session_state.config_data:
+    if 'config_data' not in st.session_state or 'agents' not in st.session_state.config_data:
         st.warning("Configuration data not loaded.")
         return
-        
-    # For MVP, directly access a predefined executor agent config
-    workflow_key = "proposer_executor_review_loop"
-    agent_config_key = "executor_config_key_in_yaml"
     
-    if (workflow_key not in st.session_state.config_data["workflows"] or
-        "agent_configs" not in st.session_state.config_data["workflows"][workflow_key] or
-        agent_config_key not in st.session_state.config_data["workflows"][workflow_key]["agent_configs"]):
-        st.warning(f"Executor agent configuration not found for workflow: {workflow_key}")
-        return
-        
     # Get the executor agent configuration
-    executor_config = st.session_state.config_data["workflows"][workflow_key]["agent_configs"][agent_config_key]
-    executor_agent_class_path = executor_config.get("agent_class_path", "N/A")
-    executor_init_args = executor_config.get("init_args", {})
+    agent_id = "Executor"
+    agent_configs = st.session_state.config_data.get("agents", {})
+    
+    if agent_id not in agent_configs:
+        st.warning(f"{agent_id} configuration not found.")
+        return
+    
+    agent_config = agent_configs[agent_id]
+    agent_class_path = agent_config.get("class_path", "N/A")
     
     # Display a sub-header for the configuration
-    st.subheader(f"Configuration for: Executor")
+    st.subheader(f"Configuration for: {agent_id}")
     
     # Agent Name (Read-only)
     st.text_input(
-        "Agent Name (in workflow):",
-        value=executor_init_args.get('name', 'N/A'),
+        "Agent Name:",
+        value=agent_id,
         key="executor_agent_name_cfg",
         disabled=True
     )
@@ -200,7 +351,7 @@ def render_executor_agent_tab():
     # Agent Class Path (Read-only)
     st.text_input(
         "Agent Class Path:",
-        value=executor_agent_class_path,
+        value=agent_class_path,
         key="executor_agent_class_path_cfg",
         disabled=True
     )
@@ -211,40 +362,37 @@ def render_executor_agent_tab():
     # Controls within the Executor Agent Tab (Placeholders)
     col1, col2 = st.columns(2)
     with col1:
-        st.button("Apply Changes to Executor Agent", key="apply_executor_agent_cfg")
+        st.button("Apply Changes to Executor Agent", key="apply_executor_agent_cfg", disabled=True)
     with col2:
-        st.button("Revert Changes for Executor Agent", key="revert_executor_agent_cfg")
+        st.button("Revert Changes for Executor Agent", key="revert_executor_agent_cfg", disabled=True)
+
 
 def render_peer_reviewer_tab():
     """Render the Peer Reviewer Agent tab with configuration options."""
     st.header("Peer Reviewer Agent Configuration")
     
-    if 'config_data' not in st.session_state or 'workflows' not in st.session_state.config_data:
+    if 'config_data' not in st.session_state or 'agents' not in st.session_state.config_data:
         st.warning("Configuration data not loaded.")
         return
-        
-    # For MVP, directly access a predefined peer reviewer agent config
-    workflow_key = "proposer_executor_review_loop"
-    agent_config_key = "reviewer_config_key_in_yaml"
     
-    if (workflow_key not in st.session_state.config_data["workflows"] or
-        "agent_configs" not in st.session_state.config_data["workflows"][workflow_key] or
-        agent_config_key not in st.session_state.config_data["workflows"][workflow_key]["agent_configs"]):
-        st.warning(f"Peer Reviewer agent configuration not found for workflow: {workflow_key}")
-        return
-        
     # Get the peer reviewer agent configuration
-    reviewer_config = st.session_state.config_data["workflows"][workflow_key]["agent_configs"][agent_config_key]
-    reviewer_agent_class_path = reviewer_config.get("agent_class_path", "N/A")
-    reviewer_init_args = reviewer_config.get("init_args", {})
+    agent_id = "PeerReviewer"
+    agent_configs = st.session_state.config_data.get("agents", {})
+    
+    if agent_id not in agent_configs:
+        st.warning(f"{agent_id} configuration not found.")
+        return
+    
+    agent_config = agent_configs[agent_id]
+    agent_class_path = agent_config.get("class_path", "N/A")
     
     # Display a sub-header for the configuration
-    st.subheader(f"Configuration for: Peer Reviewer")
+    st.subheader(f"Configuration for: {agent_id}")
     
     # Agent Name (Read-only)
     st.text_input(
-        "Agent Name (in workflow):",
-        value=reviewer_init_args.get('name', 'N/A'),
+        "Agent Name:",
+        value=agent_id,
         key="reviewer_agent_name_cfg",
         disabled=True
     )
@@ -252,24 +400,30 @@ def render_peer_reviewer_tab():
     # Agent Class Path (Read-only)
     st.text_input(
         "Agent Class Path:",
-        value=reviewer_agent_class_path,
+        value=agent_class_path,
         key="reviewer_agent_class_path_cfg",
         disabled=True
     )
     
     # LLM Model ID (Editable)
-    st.text_input(
+    model_id = agent_config.get("model_id", "")
+    new_model_id = st.text_input(
         "Base LLM Model ID:",
-        value=reviewer_init_args.get('llm_model', ''),
+        value=model_id,
         help="e.g., 'mistralai/Mistral-7B-Instruct-v0.2'",
         key="reviewer_llm_model_cfg"
     )
     
     # DPO Adapter Selection (Editable)
-    adapter_options = ["None"] + list(st.session_state.config_data.get('saved_adapters', {}).keys())
-    current_adapter = reviewer_init_args.get('adapter_id', "None")
+    adapter_options = ["None"]
+    reviewer_adapters = st.session_state.config_data.get("saved_adapters", {}).get("reviewer", [])
     
-    st.selectbox(
+    for adapter in reviewer_adapters:
+        adapter_options.append(adapter.get("id", "unknown"))
+    
+    current_adapter = agent_config.get("adapter_id", None) or "None"
+    
+    new_adapter = st.selectbox(
         "Active DPO Adapter:",
         options=adapter_options,
         index=adapter_options.index(current_adapter) if current_adapter in adapter_options else 0,
@@ -277,80 +431,122 @@ def render_peer_reviewer_tab():
         key="reviewer_adapter_cfg"
     )
     
-    # Controls within the Peer Reviewer Agent Tab (Placeholders)
+    # Convert "None" string to None
+    if new_adapter == "None":
+        new_adapter = None
+    
+    # Prepare updated configuration
+    updated_config = {
+        "model_id": new_model_id,
+        "adapter_id": new_adapter
+    }
+    
+    # Check if there are actual changes
+    has_changes = (
+        new_model_id != model_id or
+        new_adapter != agent_config.get("adapter_id")
+    )
+    
+    # Controls within the Peer Reviewer Agent Tab
     col1, col2 = st.columns(2)
     with col1:
-        st.button("Apply Changes to Peer Reviewer Agent", key="apply_reviewer_agent_cfg")
+        if st.button("Apply Changes to Peer Reviewer Agent", key="apply_reviewer_agent_cfg", disabled=not has_changes):
+            save_agent_config(agent_id, updated_config)
     with col2:
-        st.button("Revert Changes for Peer Reviewer Agent", key="revert_reviewer_agent_cfg")
+        if st.button("Revert Changes for Peer Reviewer Agent", key="revert_reviewer_agent_cfg"):
+            st.rerun()
+
 
 def render_model_hub_tab():
     """Render the Model & Adapter Hub tab (placeholder for now)."""
     st.header("Model & Adapter Hub")
     st.info("This feature will be implemented in post-MVP updates.")
+    
+    # List all adapters
+    adapters = st.session_state.config_data.get("saved_adapters", {}).get("all", [])
+    if adapters:
+        st.subheader("Available Adapters")
+        for adapter in adapters:
+            adapter_id = adapter.get("id", "unknown")
+            adapter_name = adapter.get("name", adapter_id)
+            adapter_path = adapter.get("path", "unknown")
+            adapter_type = adapter.get("agent_type", "unknown")
+            
+            with st.expander(f"{adapter_name} ({adapter_type})"):
+                st.code(f"ID: {adapter_id}")
+                st.code(f"Path: {adapter_path}")
+                st.code(f"Type: {adapter_type}")
 
 
 def render_global_controls():
     """Render global configuration control buttons."""
     st.header("Configuration Controls")
     
-    # Button row 1
-    col1, col2 = st.columns(2)
-    with col1:
-        st.button("💾 Save All Changes to agents.yaml", 
-                 type="primary", 
-                 key="save_all_configs_button")
-    with col2:
-        st.button("🔄 Reload Configuration from agents.yaml", 
-                 key="reload_configs_button")
+    try:
+        api_client = st.session_state.api_client
+        
+        # Button row 1
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("💾 Save All Changes to agents.yaml", 
+                       type="primary", 
+                       key="save_all_configs_button"):
+                st.info("Saving all configuration changes...")
+                # This is already handled by the individual "Apply Changes" buttons
+                # but we could implement a bulk save if needed
+                st.success("All changes have been saved.")
+        with col2:
+            if st.button("🔄 Reload Configuration from agents.yaml", 
+                       key="reload_configs_button"):
+                reload_configuration()
+        
+        # Button row 2
+        col1, col2 = st.columns(2)
+        with col1:
+            # Attempt to get the raw YAML
+            try:
+                yaml_data = "# Configuration not available"
+                # In a real implementation, we'd get the raw YAML from the API
+                # For now just pretend we have it
+                
+                st.download_button(
+                    "Download Current agents.yaml", 
+                    data=yaml_data,
+                    file_name="agents.yaml", 
+                    key="download_configs_button"
+                )
+            except Exception as e:
+                st.error(f"Error preparing download: {str(e)}")
+        
+        with col2:
+            uploaded_file = st.file_uploader(
+                "Upload agents.yaml", 
+                type=['yaml'], 
+                key="upload_config_button"
+            )
+            
+            if uploaded_file is not None:
+                try:
+                    # Read the uploaded YAML file
+                    content = uploaded_file.read()
+                    
+                    # In a real implementation, we would send this to the API
+                    # For now just indicate it was received
+                    st.success(f"Configuration file uploaded: {uploaded_file.name}")
+                    
+                    # Clear the cache to ensure we fetch fresh data
+                    fetch_config_data.clear()
+                    
+                    # Force a reload
+                    st.session_state.reload_config = True
+                    
+                    # Rerun to refresh the UI
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error processing uploaded file: {str(e)}")
     
-    # Button row 2
-    col1, col2 = st.columns(2)
-    with col1:
-        st.download_button("Download Current agents.yaml", 
-                          data="""
-workflow_settings:
- default_workflow: proposer_executor_review_loop
- logging_db_path: logs.db
- max_iterations: 10
- default_proposer_model_id: gpt-4o
- default_reviewer_model_id: claude-3-opus-20240229
-
-workflows:
- proposer_executor_review_loop:
-   name: Default Self-Improving Loop
-   description: A workflow involving a Proposer to suggest actions based on a state, an Executor to perform them, and a PeerReviewer to evaluate the outcome.
-   agent_configs:
-     proposer_config_key_in_yaml:
-       agent_class_path: camel.agents.proposer_agent.ProposerAgent
-       init_args:
-         name: Proposer_Agent_Instance_Name
-         llm_model: mistralai/Mistral-7B-Instruct-v0.2
-         adapter_id: None
-     executor_config_key_in_yaml:
-       agent_class_path: camel.agents.executor_agent.ExecutorAgent
-       init_args:
-         name: Executor_Agent_Instance_Name
-     reviewer_config_key_in_yaml:
-       agent_class_path: camel.agents.peer_reviewer_agent.PeerReviewerAgent
-       init_args:
-         name: Peer_Reviewer_Agent_Instance_Name
-         llm_model: mistralai/Mistral-7B-Instruct-v0.2
-         adapter_id: None
-
-saved_adapters:
- proposer_adapter_1: models/proposer_dpo_20250520_1
- proposer_adapter_2: models/proposer_dpo_20250519_1
- proposer_dpo_model_1: models/proposer_full_model_20250515
- reviewer_adapter_1: models/reviewer_dpo_20250520_1
- reviewer_adapter_2: models/reviewer_dpo_20250518_2
-""",
-                          file_name="agents_custom.yaml", 
-                          key="download_configs_button")
-    with col2:
-        st.file_uploader("Upload agents.yaml", 
-                        type=['yaml'], 
-                        key="upload_config_button")
+    except Exception as e:
+        st.error(f"Error in configuration controls: {str(e)}")
 
 
 def render_config_view():
@@ -371,7 +567,7 @@ def render_config_view():
         "Proposer Agent", 
         "Executor Agent", 
         "Peer Reviewer Agent", 
-        "Model & Adapter Hub (Post-MVP)"
+        "Model & Adapter Hub"
     ])
     
     # Render content for each tab

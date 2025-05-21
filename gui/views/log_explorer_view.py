@@ -1,87 +1,225 @@
 """
-Log Explorer & Annotation View for camel_ext GUI.
+Log Explorer & Annotation View for CAMEL Extensions GUI.
 
-This module implements the log explorer view with log display and filtering UI.
-For MVP, this uses placeholder data instead of actual database interaction.
+This module implements the log explorer view with log display, filtering UI,
+and annotation capabilities. It uses the API client to fetch and save data.
 """
 import streamlit as st
 import pandas as pd
 import json
-from datetime import date, timedelta
+from datetime import datetime, date, timedelta
+from typing import Dict, Any, List, Optional
+
+
+def fetch_logs(filters: Optional[Dict[str, Any]] = None):
+    """
+    Fetch logs from the API with optional filters.
+    
+    Args:
+        filters: Optional dictionary of filter parameters
+    
+    Returns:
+        List of log entries
+    """
+    try:
+        api_client = st.session_state.api_client
+        
+        # Build filter parameters
+        params = {}
+        if filters:
+            # Apply workflow ID filter
+            if filters.get("workflow_id"):
+                params["workflow_id"] = filters["workflow_id"]
+                
+            # Apply date range filter
+            if filters.get("start_date"):
+                params["start_date"] = filters["start_date"].isoformat()
+            if filters.get("end_date"):
+                params["end_date"] = filters["end_date"].isoformat()
+            
+            # Apply agent name filter
+            if filters.get("agent_names"):
+                params["agent_name"] = filters["agent_names"][0]  # API currently only supports one
+                
+            # Apply agent type filter
+            if filters.get("agent_types"):
+                params["agent_type"] = filters["agent_types"][0]  # API currently only supports one
+                
+            # Apply annotation status filter
+            if filters.get("has_annotation") is not None:
+                params["has_annotation"] = filters["has_annotation"]
+                
+            # Apply keyword filter
+            if filters.get("keyword"):
+                params["keyword"] = filters["keyword"]
+        
+        # Add pagination parameters
+        params["offset"] = filters.get("offset", 0) if filters else 0
+        params["limit"] = filters.get("limit", 100) if filters else 100
+        params["sort_by"] = filters.get("sort_by", "timestamp") if filters else "timestamp"
+        params["sort_desc"] = filters.get("sort_desc", True) if filters else True
+        
+        # Fetch logs
+        logs = api_client.get_logs(**params)
+        
+        # Process logs for display
+        processed_logs = []
+        for log in logs:
+            # Format the log for display
+            processed_log = {
+                "ID": log.get("id"),
+                "Timestamp": log.get("timestamp"),
+                "WorkflowID": log.get("workflow_run_id"),
+                "Step #": len(processed_logs) + 1,  # Temporary, would be from sequence in real data
+                "Agent Name": log.get("agent_name"),
+                "Agent Type": log.get("agent_type"),
+                "Input Summary": str(log.get("input_data", {})),
+                "Output Summary": str(log.get("output_data", {})),
+                "Annotation Status": "Annotated" if log.get("has_annotation") else "Unannotated",
+                "Raw": log  # Keep the raw log data for detail view
+            }
+            processed_logs.append(processed_log)
+        
+        return processed_logs
+    
+    except Exception as e:
+        st.error(f"Error fetching logs: {str(e)}")
+        return []
+
 
 def init_log_explorer_data():
-    """Initialize placeholder log data if not already in session state."""
-    if "log_explorer_data" not in st.session_state:
-        # This is placeholder data that would normally be loaded from logs.db
-        placeholder_logs = [
-            {
-                "ID": 1, 
-                "Timestamp": "2025-05-20 10:00:00", 
-                "WorkflowID": "wf_abc", 
-                "Step #": 1, 
-                "Agent Name": "Proposer", 
-                "Agent Type": "Proposer", 
-                "Input Summary": "{'goal': 'Create a comprehensive report on renewable energy trends'}", 
-                "Output Summary": "{'proposal': 'I'll start by researching the latest developments in solar, wind, and hydroelectric power sources.'}", 
-                "Annotation Status": "Unannotated"
-            },
-            {
-                "ID": 2, 
-                "Timestamp": "2025-05-20 10:00:05", 
-                "WorkflowID": "wf_abc", 
-                "Step #": 2, 
-                "Agent Name": "Executor", 
-                "Agent Type": "Executor", 
-                "Input Summary": "{'command': 'Research renewable energy trends focusing on solar, wind, and hydroelectric sources'}", 
-                "Output Summary": "{'stdout': 'Analysis complete. Solar adoption increased 25% in 2022, wind energy capacity grew by 15%, and hydroelectric developments slowed to 5% growth.'}", 
-                "Annotation Status": "N/A"
-            },
-            {
-                "ID": 3, 
-                "Timestamp": "2025-05-20 10:01:10", 
-                "WorkflowID": "wf_abc", 
-                "Step #": 3, 
-                "Agent Name": "PeerReviewer", 
-                "Agent Type": "PeerReviewer", 
-                "Input Summary": "{'review_subject': 'Analysis on renewable energy trends'}", 
-                "Output Summary": "{'feedback': 'The analysis is good but lacks context on regional variations and government policies.'}", 
-                "Annotation Status": "Marked for DPO - Chosen"
-            },
-            {
-                "ID": 4, 
-                "Timestamp": "2025-05-20 11:15:00", 
-                "WorkflowID": "wf_def", 
-                "Step #": 1, 
-                "Agent Name": "Proposer", 
-                "Agent Type": "Proposer", 
-                "Input Summary": "{'goal': 'Optimize the database query performance'}", 
-                "Output Summary": "{'proposal': 'Let's analyze the current query structure and identify potential bottlenecks.'}", 
-                "Annotation Status": "Rated"
-            },
-            {
-                "ID": 5, 
-                "Timestamp": "2025-05-20 11:15:30", 
-                "WorkflowID": "wf_def", 
-                "Step #": 2, 
-                "Agent Name": "Executor", 
-                "Agent Type": "Executor", 
-                "Input Summary": "{'command': 'Profile the database query performance'}", 
-                "Output Summary": "{'stdout': 'Identified three queries with suboptimal performance. The main bottleneck is in the join operation.'}", 
-                "Annotation Status": "N/A"
-            },
-            {
-                "ID": 6, 
-                "Timestamp": "2025-05-21 09:30:00", 
-                "WorkflowID": "wf_ghi", 
-                "Step #": 1, 
-                "Agent Name": "Proposer", 
-                "Agent Type": "Proposer", 
-                "Input Summary": "{'goal': 'Develop a testing strategy for the new authentication module'}", 
-                "Output Summary": "{'proposal': 'We should implement unit tests for each function and integration tests for the full workflow.'}", 
-                "Annotation Status": "Marked for DPO - Rejected"
-            }
-        ]
-        st.session_state.log_explorer_data = placeholder_logs
+    """Initialize log data using the API client if not already in session state."""
+    if "log_explorer_data" not in st.session_state or st.session_state.get("reload_logs", False):
+        try:
+            # Get filters from session state
+            filters = get_current_filters()
+            
+            # Fetch logs with filters
+            st.session_state.log_explorer_data = fetch_logs(filters)
+            st.session_state.reload_logs = False
+        except Exception as e:
+            st.error(f"Error initializing log data: {str(e)}")
+            
+            # Use placeholder data as fallback
+            if "log_explorer_data" not in st.session_state:
+                st.session_state.log_explorer_data = []
+
+
+def get_current_filters() -> Dict[str, Any]:
+    """Get current filter values from session state."""
+    filters = {}
+    
+    # WorkflowID filter
+    workflow_id = st.session_state.get("log_filter_workflow_id")
+    if workflow_id:
+        filters["workflow_id"] = workflow_id
+    
+    # Date range filter
+    date_range = st.session_state.get("log_filter_date_range")
+    if date_range and len(date_range) == 2:
+        filters["start_date"] = date_range[0]
+        filters["end_date"] = date_range[1]
+    
+    # Agent name filter
+    agent_names = st.session_state.get("log_filter_agent_name")
+    if agent_names:
+        filters["agent_names"] = agent_names
+    
+    # Agent type filter
+    agent_types = st.session_state.get("log_filter_agent_type")
+    if agent_types:
+        filters["agent_types"] = agent_types
+    
+    # Annotation status filter
+    annotation_status = st.session_state.get("log_filter_annotation_status")
+    if annotation_status and annotation_status != "All":
+        if annotation_status == "Unannotated":
+            filters["has_annotation"] = False
+        else:  # All annotated cases
+            filters["has_annotation"] = True
+    
+    # Keyword search
+    keyword = st.session_state.get("log_filter_keyword")
+    if keyword:
+        filters["keyword"] = keyword
+    
+    return filters
+
+
+def apply_filters():
+    """Apply filters and reload logs."""
+    st.session_state.reload_logs = True
+    st.rerun()
+
+
+def reset_filters():
+    """Reset all filters to default values."""
+    # Reset WorkflowID filter
+    st.session_state.log_filter_workflow_id = ""
+    
+    # Reset date range filter to last 7 days
+    st.session_state.log_filter_date_range = (date.today() - timedelta(days=7), date.today())
+    
+    # Reset agent name filter
+    st.session_state.log_filter_agent_name = []
+    
+    # Reset agent type filter
+    st.session_state.log_filter_agent_type = []
+    
+    # Reset annotation status filter
+    st.session_state.log_filter_annotation_status = "All"
+    
+    # Reset keyword search
+    st.session_state.log_filter_keyword = ""
+    
+    # Force reload of logs
+    st.session_state.reload_logs = True
+    st.rerun()
+
+
+def fetch_log_annotation(log_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Fetch annotation for a specific log entry.
+    
+    Args:
+        log_id: Log entry ID
+    
+    Returns:
+        Annotation data if available, otherwise None
+    """
+    try:
+        api_client = st.session_state.api_client
+        return api_client.get_annotation(log_id)
+    except Exception as e:
+        st.error(f"Error fetching annotation: {str(e)}")
+        return None
+
+
+def save_annotation(annotation_data: Dict[str, Any]) -> bool:
+    """
+    Save annotation to the backend.
+    
+    Args:
+        annotation_data: Annotation data to save
+    
+    Returns:
+        Success or failure
+    """
+    try:
+        api_client = st.session_state.api_client
+        annotation_id = api_client.save_annotation(annotation_data)
+        
+        if annotation_id:
+            st.success(f"Annotation saved successfully.")
+            # Force reload of logs to reflect new annotation status
+            st.session_state.reload_logs = True
+            return True
+        else:
+            st.error("Failed to save annotation.")
+            return False
+    except Exception as e:
+        st.error(f"Error saving annotation: {str(e)}")
+        return False
 
 
 def render_log_filtering_controls():
@@ -94,38 +232,62 @@ def render_log_filtering_controls():
         # Default to last 7 days
         default_start_date = date.today() - timedelta(days=7)
         default_end_date = date.today()
-        st.date_input("Date Range:", value=(default_start_date, default_end_date), key="log_filter_date_range")
+        
+        # Initialize the date range in session state if not already there
+        if "log_filter_date_range" not in st.session_state:
+            st.session_state.log_filter_date_range = (default_start_date, default_end_date)
+        
+        st.date_input("Date Range:", value=st.session_state.log_filter_date_range, key="log_filter_date_range")
+        
+        # Get agent names and types from logs for filter options
+        agent_names = set()
+        agent_types = set()
+        
+        if st.session_state.get("log_explorer_data"):
+            for log in st.session_state.log_explorer_data:
+                if "Agent Name" in log and log["Agent Name"]:
+                    agent_names.add(log["Agent Name"])
+                if "Agent Type" in log and log["Agent Type"]:
+                    agent_types.add(log["Agent Type"])
+        
+        # Default options if no logs
+        if not agent_names:
+            agent_names = ["Proposer", "Executor", "PeerReviewer"]
+        if not agent_types:
+            agent_types = ["Proposer", "Executor", "PeerReviewer"]
         
         # Agent Name Filter
         st.multiselect(
             "Filter by Agent Name(s):", 
-            options=["Proposer", "Executor", "PeerReviewer"],
+            options=list(agent_names),
             key="log_filter_agent_name"
         )
         
         # Agent Type Filter
         st.multiselect(
             "Filter by Agent Type(s):", 
-            options=["Proposer", "Executor", "PeerReviewer"],
+            options=list(agent_types),
             key="log_filter_agent_type"
         )
         
         # Annotation Status Filter
         st.selectbox(
             "Filter by Annotation Status:",
-            options=["All", "Unannotated", "Rated", "Marked for DPO - Chosen", "Marked for DPO - Rejected"],
+            options=["All", "Unannotated", "Annotated"],
             key="log_filter_annotation_status"
         )
         
         # Keyword Search
-        st.text_input("Keyword Search (in Input/Output JSON):", key="log_filter_keyword")
+        st.text_input("Keyword Search (in Input/Output):", key="log_filter_keyword")
         
         # Filter Action Buttons
         col1, col2 = st.columns(2)
         with col1:
-            st.button("Apply Filters", key="apply_log_filters_button")
+            if st.button("Apply Filters", key="apply_log_filters_button"):
+                apply_filters()
         with col2:
-            st.button("Reset Filters", key="reset_log_filters_button")
+            if st.button("Reset Filters", key="reset_log_filters_button"):
+                reset_filters()
 
 
 def render_log_display():
@@ -133,26 +295,30 @@ def render_log_display():
     st.header("Log Entries")
     
     if not st.session_state.log_explorer_data:
-        st.info("No log data to display.")
+        st.info("No log data to display. Try adjusting the filters or check API connectivity.")
         return
     
     # Get all possible columns from the log data
-    all_columns = list(st.session_state.log_explorer_data[0].keys())
+    all_columns = [col for col in list(st.session_state.log_explorer_data[0].keys()) if col != "Raw"]
     
     # Default visible columns
     default_visible_columns = ["ID", "Timestamp", "Agent Name", "Agent Type", 
-                               "Input Summary", "Output Summary", "Annotation Status"]
+                              "Input Summary", "Output Summary", "Annotation Status"]
     
     # Column selection multiselect
     visible_columns = st.multiselect(
         "Visible Columns:",
         options=all_columns,
-        default=[col for col in default_visible_columns if col in all_columns]
+        default=[col for col in default_visible_columns if col in all_columns],
+        key="log_visible_columns"
     )
     
     # Display the log data as a dataframe with selected columns
     if visible_columns:
-        display_df = pd.DataFrame(st.session_state.log_explorer_data)[visible_columns]
+        # Create a new DataFrame with only the visible columns
+        display_data = [{col: log[col] for col in visible_columns if col in log} 
+                        for log in st.session_state.log_explorer_data]
+        display_df = pd.DataFrame(display_data)
         st.dataframe(display_df, use_container_width=True)
     else:
         st.info("Select columns to display.")
@@ -203,51 +369,61 @@ def render_log_detail_view():
         
         # Interaction Details Tab
         with tabs[0]:
+            # Get raw log data from the entry
+            raw_log = selected_log_entry.get("Raw", {})
+            
             st.subheader("Full Input Data")
-            try:
-                input_data = json.loads(st.session_state.selected_log_entry.get("Input Summary", "{}"))
-                st.json(input_data)
-            except json.JSONDecodeError:
-                st.text(st.session_state.selected_log_entry.get("Input Summary", "Invalid or no input data"))
-
+            input_data = raw_log.get("input_data", {})
+            st.json(input_data)
+            
             st.subheader("Full Output Data")
-            try:
-                output_data = json.loads(st.session_state.selected_log_entry.get("Output Summary", "{}"))
-                st.json(output_data)
-            except json.JSONDecodeError:
-                st.text(st.session_state.selected_log_entry.get("Output Summary", "Invalid or no output data"))
+            output_data = raw_log.get("output_data", {})
+            st.json(output_data)
         
         # Annotate Proposer Action Tab
         with tabs[1]:
             # Only show annotation form if the selected log is from a Proposer
-            if st.session_state.selected_log_entry['Agent Type'] == 'Proposer':
+            if selected_log_entry['Agent Type'] == 'Proposer':
+                # Fetch existing annotation if any
+                annotation = fetch_log_annotation(selected_log_entry['ID'])
+                
+                # Extract goal and proposer command from raw data
+                raw_log = selected_log_entry.get("Raw", {})
+                input_data = raw_log.get("input_data", {})
+                output_data = raw_log.get("output_data", {})
+                
+                # Try to extract a goal from input data
+                goal = input_data.get('goal', str(input_data))
+                
+                # Try to extract proposer command from output data
+                original_proposer_cmd = str(output_data.get('proposal', str(output_data)))
+                
                 # Context Display (Read-only)
-                st.markdown(f"**Goal:** {st.session_state.selected_log_entry.get('Input Summary', 'N/A')}")
-                
-                # Extract proposer command from output
-                try:
-                    output_data = json.loads(st.session_state.selected_log_entry.get("Output Summary", "{}"))
-                    original_proposer_cmd = output_data.get('proposal', 'N/A')
-                except json.JSONDecodeError:
-                    original_proposer_cmd = st.session_state.selected_log_entry.get("Output Summary", "N/A")
-                
+                st.markdown(f"**Goal:** {goal}")
                 st.markdown(f"**Proposer's Original Command:** `{original_proposer_cmd}`")
                 
-                # Placeholder for Executor's Result and Peer Review
+                # Executor and Peer Review placeholders for context
+                # In a real implementation, we'd fetch related logs from the same workflow
                 st.markdown(f"**Executor's Result (if available):** `stdout: Command executed successfully.`, `stderr: `, `exit_code: 0`")
                 st.markdown(f"**Peer Review (if available):** Score: 4/5, Critique: 'The proposed command is good but could be more efficient.'")
                 
                 # Annotation Form
                 with st.form("proposer_annotation_form"):
-                    st.radio(
+                    # Pre-fill form with existing annotation if available
+                    rating_options = ["⭐", "⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐⭐⭐"]
+                    rating_index = min(int(annotation.get("rating", 3)) - 1, 4) if annotation else 2
+                    
+                    rating = st.radio(
                         "Rate Original Action Quality:",
-                        options=["⭐", "⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐⭐⭐"],
+                        options=rating_options,
+                        index=rating_index,
                         horizontal=True,
                         key="proposer_quality_rating_form"
                     )
                     
-                    st.text_area(
+                    rationale = st.text_area(
                         "Rationale for Rating (Optional):",
+                        value=annotation.get("rationale", "") if annotation else "",
                         key="proposer_rating_rationale_form"
                     )
                     
@@ -256,36 +432,51 @@ def render_log_detail_view():
                     
                     chosen_cmd = st.text_area(
                         "✅ **Chosen Command** (Ideal):",
-                        value=original_proposer_cmd,
+                        value=annotation.get("chosen_prompt", original_proposer_cmd) if annotation else original_proposer_cmd,
                         height=100,
                         key="chosen_proposer_command_form"
                     )
                     
                     rejected_cmd = st.text_area(
                         "❌ **Rejected Command** (Inferior/Incorrect):",
+                        value=annotation.get("rejected_prompt", "") if annotation else "",
                         height=100,
                         key="rejected_proposer_command_form",
                         help="Example: A less efficient, incorrect, or unsafe command."
                     )
                     
-                    # Auto-generate DPO prompt from goal
-                    try:
-                        input_data = json.loads(st.session_state.selected_log_entry.get("Input Summary", "{}"))
-                        goal = input_data.get('goal', 'N/A')
-                    except json.JSONDecodeError:
-                        goal = st.session_state.selected_log_entry.get("Input Summary", "N/A")
-                    
+                    # Auto-generate DPO prompt context from goal
                     auto_generated_dpo_prompt = f"Given the goal: '{goal}', propose a command."
                     
                     prompt_context = st.text_area(
                         "📝 **Prompt/Context for DPO** (Auto-generated, editable):",
-                        value=auto_generated_dpo_prompt,
+                        value=annotation.get("dpo_context", auto_generated_dpo_prompt) if annotation else auto_generated_dpo_prompt,
                         height=150,
                         key="proposer_dpo_prompt_form",
                         help="This will be the 'prompt' for the DPO trainer..."
                     )
                     
-                    st.form_submit_button("💾 Save Proposer Annotation")
+                    # Submit annotation
+                    if st.form_submit_button("💾 Save Proposer Annotation"):
+                        # Convert rating to numeric value
+                        numeric_rating = len(rating)
+                        
+                        # Prepare annotation data
+                        annotation_data = {
+                            "log_entry_id": selected_log_entry['ID'],
+                            "rating": numeric_rating,
+                            "rationale": rationale,
+                            "chosen_prompt": chosen_cmd,
+                            "rejected_prompt": rejected_cmd,
+                            "dpo_context": prompt_context,
+                            "user_id": "gui_user"  # In a real app, this would be the authenticated user
+                        }
+                        
+                        # Save annotation
+                        if save_annotation(annotation_data):
+                            # Force reload of log data to reflect changes
+                            st.session_state.reload_logs = True
+                            st.rerun()
             else:
                 st.info("Annotation is only available for logs from Proposer agents. The selected log is from a different agent type.")
 
@@ -294,8 +485,8 @@ def render_log_explorer_view():
     """
     Render the log explorer & annotation view.
     
-    This function implements UI elements for log display and filtering.
-    For MVP, this uses placeholder data instead of actual database interaction.
+    This function implements UI elements for log display, filtering, and annotation.
+    It uses the API client to fetch and save data.
     """
     st.title("Log Explorer & Annotation View")
     

@@ -1,6 +1,19 @@
-camel-ai
-streamlit
-pandas
-streamlit-aggrid
-aiosqlite
-ruamel.yaml
+# CAMEL Extensions Requirements
+# This file installs dependencies for both backend and GUI
+
+# Include backend requirements
+-r backend/requirements.txt
+
+# Include GUI requirements
+-r gui/requirements.txt
+
+# Project-wide dependencies
+python-dotenv>=1.0.0
+camel-ai>=0.1.0
+
+# Development tools
+black>=23.9.1
+flake8>=6.1.0
+isort>=5.12.0
+mypy>=1.5.1
+pre-commit>=3.4.0
