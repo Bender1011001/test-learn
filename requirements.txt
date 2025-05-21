@@ -1,0 +1,6 @@
+camel-ai
+streamlit
+pandas
+streamlit-aggrid
+aiosqlite
+ruamel.yaml
