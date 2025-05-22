@@ -503,11 +503,9 @@ def render_global_controls():
         # Button row 2
         col1, col2 = st.columns(2)
         with col1:
-            # Attempt to get the raw YAML
+            # Get the raw YAML from the API
             try:
-                yaml_data = "# Configuration not available"
-                # In a real implementation, we'd get the raw YAML from the API
-                # For now just pretend we have it
+                yaml_data = api_client.download_config()
                 
                 st.download_button(
                     "Download Current agents.yaml", 
@@ -528,11 +526,15 @@ def render_global_controls():
             if uploaded_file is not None:
                 try:
                     # Read the uploaded YAML file
-                    content = uploaded_file.read()
+                    content = uploaded_file.getvalue().decode('utf-8')
                     
-                    # In a real implementation, we would send this to the API
-                    # For now just indicate it was received
-                    st.success(f"Configuration file uploaded: {uploaded_file.name}")
+                    # Send the content to the API
+                    response = api_client.upload_config(content)
+                    
+                    if response.get('status') == 'success':
+                        st.success(f"Configuration file uploaded: {uploaded_file.name}")
+                    else:
+                        st.warning(f"Upload response: {response.get('message', 'Unknown status')}")
                     
                     # Clear the cache to ensure we fetch fresh data
                     fetch_config_data.clear()

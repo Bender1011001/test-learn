@@ -44,6 +44,10 @@ class APIClient:
         Raises:
             requests.exceptions.RequestException: If the request fails after retries
         """
+        # Apply default timeouts if not specified
+        if 'timeout' not in kwargs:
+            kwargs['timeout'] = (3, 10)  # (connect timeout, read timeout) in seconds
+            
         url = f"{self.base_url}/{path.lstrip('/')}"
         self.logger.debug(f"Making {method} request to {url}")
         
@@ -83,6 +87,15 @@ class APIClient:
     def delete(self, path: str, **kwargs):
         """Make DELETE request to API."""
         return self._request("DELETE", path, **kwargs)
+    
+    def close(self):
+        """Close the requests session when done."""
+        if self.session:
+            try:
+                self.session.close()
+                self.logger.debug("API client session closed")
+            except Exception as e:
+                self.logger.error(f"Error closing API client session: {e}")
     
     def get_health(self) -> Dict[str, Any]:
         """Get API health status."""
@@ -135,6 +148,23 @@ class APIClient:
         """Get saved DPO adapters, optionally filtered by agent type."""
         params = {"agent_type": agent_type} if agent_type else None
         return self.get("api/v1/configs/adapters", params=params)
+    
+    def download_config(self) -> str:
+        """Download the agents.yaml configuration file as a string."""
+        response = self.session.get(f"{self.base_url}/api/v1/configs/download", 
+                                   timeout=(3, 10),
+                                   headers={"Accept": "text/plain"})
+        response.raise_for_status()
+        return response.text
+    
+    def upload_config(self, config_content: str) -> Dict[str, Any]:
+        """Upload a new agents.yaml configuration file."""
+        files = {"file": ("agents.yaml", config_content, "text/plain")}
+        response = self.session.post(f"{self.base_url}/api/v1/configs/upload", 
+                                    files=files,
+                                    timeout=(3, 10))
+        response.raise_for_status()
+        return response.json()
     
     # Log Management
     
