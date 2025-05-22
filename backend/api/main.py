@@ -8,17 +8,43 @@ from dotenv import load_dotenv
 from loguru import logger
 import json
 import asyncio
+import time
 
 # Load environment variables
 load_dotenv()
+
+# Configure logging
+import logging
+from loguru import logger
+
+# Configure loguru
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+logger.remove()  # Remove default handler
+logger.add(
+    "logs/api_{time}.log",
+    rotation="500 MB",
+    retention="10 days",
+    compression="zip",
+    level=LOG_LEVEL,
+    format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level} | {name}:{function}:{line} | {message}",
+)
+logger.add(
+    lambda msg: print(msg, end=""),  # Console output
+    level=LOG_LEVEL,
+    format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level}</level> | <cyan>{name}:{function}:{line}</cyan> | <level>{message}</level>",
+)
 
 # Import dependencies and settings
 from .dependencies import get_settings, get_services
 from ..db.base import Base, engine, get_db
 from ..core.services.workflow_manager import WorkflowManager
+from ..core.services.monitoring_service import get_monitoring_service
 
 # Import routers
-from .routers import workflows, configs, logs, dpo_training
+from .routers import workflows, configs, logs, dpo_training, metrics
+
+# Import middleware
+from .middleware.monitoring import MonitoringMiddleware, TimedRoute
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -34,6 +60,17 @@ app = FastAPI(
     docs_url=settings["docs_url"],
     openapi_url=settings["openapi_url"],
     redoc_url=settings["redoc_url"],
+    # Use our custom route class for timing
+    router_class=TimedRoute,
+)
+
+# Add monitoring middleware
+app.add_middleware(
+    MonitoringMiddleware,
+    exclude_paths=["/health", "/metrics/prometheus"],
+    log_request_body=settings.get("log_request_body", False),
+    log_response_body=settings.get("log_response_body", False),
+    log_headers=settings.get("log_headers", False)
 )
 
 # Configure CORS
@@ -61,6 +98,7 @@ app.include_router(workflows.router, prefix=f"{api_prefix}/workflows", tags=["wo
 app.include_router(configs.router, prefix=f"{api_prefix}/configs", tags=["configs"])
 app.include_router(logs.router, prefix=f"{api_prefix}/logs", tags=["logs"])
 app.include_router(dpo_training.router, prefix=f"{api_prefix}/dpo", tags=["dpo"])
+app.include_router(metrics.router, prefix=f"{api_prefix}/metrics", tags=["metrics"])
 
 
 @app.get("/", include_in_schema=False)
@@ -82,8 +120,9 @@ async def workflow_websocket(websocket: WebSocket, workflow_run_id: str, db=Depe
     await websocket.accept()
     active_connections[workflow_run_id] = websocket
     
-    # Get workflow manager
+    # Get workflow manager and Redis service
     config_manager, workflow_manager, db_manager, dpo_trainer = get_services(db)
+    redis_service = await get_redis_service()
     
     # Check if workflow exists
     status = workflow_manager.get_workflow_status(workflow_run_id)
@@ -101,26 +140,31 @@ async def workflow_websocket(websocket: WebSocket, workflow_run_id: str, db=Depe
         "data": status
     }))
     
+    # Define callback for status updates
+    async def on_status_update(data):
+        await websocket.send_text(json.dumps({
+            "type": "status",
+            "data": data
+        }))
+    
+    # Define callback for log updates
+    async def on_log_update(data):
+        await websocket.send_text(json.dumps({
+            "type": "log",
+            "data": data
+        }))
+    
+    # Subscribe to status and log events
+    await redis_service.subscribe(EventChannel.WORKFLOW_STATUS, workflow_run_id, on_status_update)
+    
     try:
-        # Stream logs
+        # Stream logs using the event-driven approach
+        # This will subscribe to the Redis PubSub channel for logs and yield them
         async for log in workflow_manager.stream_workflow_logs(workflow_run_id):
             await websocket.send_text(json.dumps({
                 "type": "log",
                 "data": log
             }))
-            
-            # Check if workflow status has changed
-            new_status = workflow_manager.get_workflow_status(workflow_run_id)
-            if not new_status:
-                # Workflow might have been deleted
-                break
-            
-            if new_status.get("status") != status.get("status"):
-                status = new_status
-                await websocket.send_text(json.dumps({
-                    "type": "status",
-                    "data": status
-                }))
     
     except WebSocketDisconnect:
         if workflow_run_id in active_connections:
@@ -140,6 +184,7 @@ async def workflow_websocket(websocket: WebSocket, workflow_run_id: str, db=Depe
 @app.on_event("startup")
 async def startup_event():
     """Startup event handler"""
+    start_time = time.time()
     logger.info("Starting CAMEL Extensions API")
     
     # Initialize service singletons
@@ -147,6 +192,21 @@ async def startup_event():
     try:
         config_manager, workflow_manager, db_manager, dpo_trainer = get_services(db)
         logger.info("Services initialized")
+        
+        # Initialize and connect Redis service
+        redis_service = await get_redis_service()
+        logger.info("Redis service initialized and connected")
+        
+        # Initialize monitoring service
+        monitoring_service = get_monitoring_service()
+        logger.info("Monitoring service initialized")
+        
+        # Create logs directory if it doesn't exist
+        os.makedirs("logs", exist_ok=True)
+        
+        # Record startup time
+        startup_duration = time.time() - start_time
+        logger.info(f"API startup completed in {startup_duration:.2f} seconds")
     finally:
         db.close()
 
@@ -154,6 +214,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Shutdown event handler"""
+    start_time = time.time()
     logger.info("Shutting down CAMEL Extensions API")
     
     # Close all WebSocket connections
@@ -165,6 +226,28 @@ async def shutdown_event():
             pass
     
     active_connections.clear()
+    
+    # Disconnect Redis service
+    try:
+        redis_service = await get_redis_service()
+        await redis_service.disconnect()
+        logger.info("Redis service disconnected")
+    except Exception as e:
+        logger.error(f"Error disconnecting Redis service: {e}")
+    
+    # Get final metrics before shutdown
+    try:
+        monitoring_service = get_monitoring_service()
+        metrics_summary = monitoring_service.get_metrics_summary()
+        logger.info(f"Final API metrics: {json.dumps(metrics_summary.get('api_latency', {}))}")
+        logger.info(f"Final DB metrics: {json.dumps(metrics_summary.get('db_latency', {}))}")
+        logger.info(f"Final error metrics: {json.dumps(metrics_summary.get('errors', {}))}")
+    except Exception as e:
+        logger.error(f"Error getting final metrics: {e}")
+    
+    # Log shutdown time
+    shutdown_duration = time.time() - start_time
+    logger.info(f"API shutdown completed in {shutdown_duration:.2f} seconds")
 
 
 if __name__ == "__main__":

@@ -1,30 +1,20 @@
 # GUI Dependencies
 
-# Streamlit
-streamlit>=1.28.0
-streamlit-extras>=0.3.0
+# Streamlit and UI
+streamlit>=1.26.0
+streamlit-autorefresh>=0.1.1
+plotly>=5.16.0
+pandas>=2.0.0
+numpy>=1.24.0
+altair>=5.0.0
+pillow>=10.0.0
 
-# FastAPI for health endpoint
-fastapi>=0.103.0
-uvicorn>=0.23.0
-
-# HTTP and WebSocket Clients
+# API Client
 requests>=2.31.0
 websocket-client>=1.6.0
-tenacity>=8.2.2
+aiohttp>=3.8.5
 
-# Data Processing
-pandas>=2.1.0
-numpy>=1.24.0
+# Utilities
+python-dotenv>=1.0.0
 pyyaml>=6.0.0
-
-# UI Enhancements
-plotly>=5.17.0
-altair>=5.1.1
-
-# Monitoring 
-psutil>=5.9.5
-
-# Development
-pytest>=7.3.1
-httpx>=0.24.1
+loguru>=0.7.0

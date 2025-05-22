@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
+env/
 build/
 develop-eggs/
 dist/
@@ -15,55 +16,45 @@ lib64/
 parts/
 sdist/
 var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
 *.egg-info/
-*.manifest
-*.spec
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-instance/
-.webassets-cache
-.hypothesis/
+.installed.cfg
+*.egg
 
-# Virtual environments
-.env
-.venv
-env/
+# Virtual Environment
 venv/
 ENV/
-env.bak/
-venv.bak/
+env/
+.env
 
-# Streamlit
-.streamlit/secrets.toml
-.streamlit/
-
-# IDE / OS specific
-.vscode/
+# IDE
 .idea/
-.DS_Store
-Thumbs.db
+.vscode/
 *.swp
-*~
+*.swo
 
-# Logs and temporary files
+# Logs
 logs/
 *.log
 
-# Project specific
-# Add any project-specific patterns here
-roo_task_/
+# Cache
+.cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Streamlit
+.streamlit/
+
+# Dependencies markers
+.deps_installed
+
+# Database
+*.db
+*.sqlite3
+
+# Prometheus
+prometheus_data/
+
+# OS specific
+.DS_Store
+Thumbs.db

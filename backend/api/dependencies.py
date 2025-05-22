@@ -1,11 +1,15 @@
 from typing import Tuple
 from functools import lru_cache
 from sqlalchemy.orm import Session
+from loguru import logger
 
 from ..core.services.config_manager import ConfigManager
 from ..core.services.workflow_manager import WorkflowManager
 from ..core.services.db_manager import DBManager
 from ..core.services.dpo_trainer import DPOTrainer
+from ..core.services.redis_service import RedisService
+from ..core.services.db_monitoring import apply_db_monitoring
+from ..core.services.monitoring_service import get_monitoring_service
 from ..db.base import get_db
 
 # Service singletons
@@ -13,6 +17,7 @@ _config_manager = None
 _workflow_manager = None
 _db_manager = None
 _dpo_trainer = None
+_redis_service = None
 
 
 @lru_cache()
@@ -42,7 +47,14 @@ def get_services(db: Session) -> Tuple[ConfigManager, WorkflowManager, DBManager
             from ..db.base import SessionLocal
             return SessionLocal()
         
-        _db_manager = DBManager(db_session_factory)
+        # Create DBManager and apply monitoring decorators
+        db_manager = DBManager(db_session_factory)
+        _db_manager = apply_db_monitoring(db_manager.__class__).__new__(DBManager)
+        _db_manager.__dict__ = db_manager.__dict__
+        
+        # Initialize monitoring service
+        monitoring_service = get_monitoring_service()
+        logger.info("DB monitoring applied to DBManager")
     
     # Get or create WorkflowManager
     if _workflow_manager is None:
@@ -58,6 +70,16 @@ def get_services(db: Session) -> Tuple[ConfigManager, WorkflowManager, DBManager
         _dpo_trainer = DPOTrainer(config_manager, _db_manager)
     
     return config_manager, _workflow_manager, _db_manager, _dpo_trainer
+
+
+@lru_cache()
+async def get_redis_service() -> RedisService:
+    """Get or create RedisService singleton and ensure it's connected"""
+    global _redis_service
+    if _redis_service is None:
+        _redis_service = RedisService()
+        await _redis_service.connect()
+    return _redis_service
 
 
 def get_settings():

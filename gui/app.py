@@ -10,6 +10,7 @@ from views.config_view import render_config_view, init_config_data
 from views.log_explorer_view import render_log_explorer_view
 from views.dpo_training_view import render_dpo_training_view
 from views.settings_view import render_settings_view
+from views.monitoring_view import render_monitoring_view
 from api_client import APIClient
 from websocket_client import WebSocketManager
 
@@ -79,6 +80,13 @@ def init_session_state():
     
     if "dpo_console_output" not in st.session_state:
         st.session_state.dpo_console_output = []
+    
+    # Initialize monitoring state
+    if "api_base_url" not in st.session_state:
+        st.session_state.api_base_url = get_api_base_url()
+    
+    if "monitoring_auto_refresh" not in st.session_state:
+        st.session_state.monitoring_auto_refresh = False
 
 
 def cleanup_resources():
@@ -110,7 +118,7 @@ def main():
     
     # Add navigation in sidebar
     st.sidebar.title("Navigation")
-    view_selection = st.sidebar.radio("Go to", ["Dashboard", "Configuration", "Log Explorer", "DPO Training", "Settings"], key="main_view_selection")
+    view_selection = st.sidebar.radio("Go to", ["Dashboard", "Configuration", "Log Explorer", "DPO Training", "Monitoring", "Settings"], key="main_view_selection")
     
     # Render the selected view
     if st.session_state.main_view_selection == "Dashboard":
@@ -121,6 +129,8 @@ def main():
         render_log_explorer_view()
     elif st.session_state.main_view_selection == "DPO Training":
         render_dpo_training_view()
+    elif st.session_state.main_view_selection == "Monitoring":
+        render_monitoring_view()
     elif st.session_state.main_view_selection == "Settings":
         render_settings_view()
 
