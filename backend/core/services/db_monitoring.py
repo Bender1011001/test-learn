@@ -186,15 +186,15 @@ def monitor_db_operation_async(operation: str, table: str = "unknown"):
     return decorator
 
 
-def apply_db_monitoring(db_manager_class: Type) -> Type:
+def apply_db_monitoring(db_manager_instance):
     """
-    Apply monitoring decorators to all methods of a DBManager class
+    Apply monitoring decorators to all methods of a DBManager instance
     
     Args:
-        db_manager_class: The DBManager class to decorate
+        db_manager_instance: The DBManager instance to decorate
         
     Returns:
-        The decorated class
+        The decorated instance
     """
     # Map of method name patterns to operation types
     operation_map = {
@@ -210,35 +210,40 @@ def apply_db_monitoring(db_manager_class: Type) -> Type:
         "batch_save_logs": ("batch_insert", "logs"),
     }
     
+    # Get the class of the instance
+    db_manager_class = db_manager_instance.__class__
+    
+    # Create a new instance with the same initialization
+    decorated_instance = db_manager_instance
+    
     # Get all methods from the class
     for name, method in inspect.getmembers(db_manager_class, inspect.isfunction):
         # Skip private methods
         if name.startswith('_'):
             continue
         
-        # Determine operation type and table
-        operation = "query"  # Default
-        table = "unknown"
-        
-        # Check if method name matches any patterns
-        for pattern, (op, tbl) in operation_map.items():
-            if pattern in name:
-                operation = op
-                table = tbl
-                break
-        
-        # Apply appropriate decorator based on whether the method is async
-        if asyncio.iscoroutinefunction(method):
-            setattr(
-                db_manager_class, 
-                name, 
-                monitor_db_operation_async(operation, table)(method)
-            )
-        else:
-            setattr(
-                db_manager_class, 
-                name, 
-                monitor_db_operation(operation, table)(method)
-            )
+        # Get the bound method from the instance
+        if hasattr(db_manager_instance, name):
+            bound_method = getattr(db_manager_instance, name)
+            
+            # Determine operation type and table
+            operation = "query"  # Default
+            table = "unknown"
+            
+            # Check if method name matches any patterns
+            for pattern, (op, tbl) in operation_map.items():
+                if pattern in name:
+                    operation = op
+                    table = tbl
+                    break
+            
+            # Apply appropriate decorator based on whether the method is async
+            if asyncio.iscoroutinefunction(bound_method):
+                decorated_method = monitor_db_operation_async(operation, table)(bound_method)
+                setattr(decorated_instance, name, decorated_method)
+            else:
+                decorated_method = monitor_db_operation(operation, table)(bound_method)
+                setattr(decorated_instance, name, decorated_method)
     
-    return db_manager_class
+    logger.info("Applied monitoring decorators to DBManager instance")
+    return decorated_instance

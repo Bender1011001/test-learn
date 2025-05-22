@@ -49,12 +49,10 @@ def get_services(db: Session) -> Tuple[ConfigManager, WorkflowManager, DBManager
         
         # Create DBManager and apply monitoring decorators
         db_manager = DBManager(db_session_factory)
-        _db_manager = apply_db_monitoring(db_manager.__class__).__new__(DBManager)
-        _db_manager.__dict__ = db_manager.__dict__
+        _db_manager = apply_db_monitoring(db_manager)
         
         # Initialize monitoring service
         monitoring_service = get_monitoring_service()
-        logger.info("DB monitoring applied to DBManager")
     
     # Get or create WorkflowManager
     if _workflow_manager is None:

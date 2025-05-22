@@ -17,12 +17,17 @@ class APIClient:
         Initialize API client.
         
         Args:
-            base_url: Base URL of the API server
+            base_url: Base URL of the API server (without /api suffix)
         """
+        # Remove trailing slashes and ensure no /api suffix
         self.base_url = base_url.rstrip('/')
+        if self.base_url.endswith('/api'):
+            self.base_url = self.base_url[:-4]
+            self.logger.warning(f"Removed '/api' suffix from base_url. Using: {self.base_url}")
+            
         self.logger = logger
         self.session = requests.Session()
-        self.logger.info(f"API client initialized with base URL: {base_url}")
+        self.logger.info(f"API client initialized with base URL: {self.base_url}")
     
     @retry(
         stop=stop_after_attempt(3),
@@ -48,6 +53,10 @@ class APIClient:
         if 'timeout' not in kwargs:
             kwargs['timeout'] = (3, 10)  # (connect timeout, read timeout) in seconds
             
+        # Ensure path starts with 'api/' prefix
+        if not path.startswith('api/') and not path.startswith('/api/') and not path == 'health':
+            path = f"api/v1/{path.lstrip('/')}"
+        
         url = f"{self.base_url}/{path.lstrip('/')}"
         self.logger.debug(f"Making {method} request to {url}")
         

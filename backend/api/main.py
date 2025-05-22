@@ -9,6 +9,7 @@ from loguru import logger
 import json
 import asyncio
 import time
+from ..core.services.redis_service import RedisService, EventChannel
 
 # Load environment variables
 load_dotenv()
