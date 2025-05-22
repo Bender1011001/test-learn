@@ -53,9 +53,12 @@ class APIClient:
         if 'timeout' not in kwargs:
             kwargs['timeout'] = (3, 10)  # (connect timeout, read timeout) in seconds
             
-        # Ensure path starts with 'api/' prefix
+        # Ensure path starts with 'api/' prefix but without 'v1'
         if not path.startswith('api/') and not path.startswith('/api/') and not path == 'health':
-            path = f"api/v1/{path.lstrip('/')}"
+            path = f"api/{path.lstrip('/')}"
+        elif path.startswith('api/v1/'):
+            # Remove the v1 segment if present
+            path = path.replace('api/v1/', 'api/')
         
         url = f"{self.base_url}/{path.lstrip('/')}"
         self.logger.debug(f"Making {method} request to {url}")
@@ -160,7 +163,7 @@ class APIClient:
     
     def download_config(self) -> str:
         """Download the agents.yaml configuration file as a string."""
-        response = self.session.get(f"{self.base_url}/api/v1/configs/download", 
+        response = self.session.get(f"{self.base_url}/api/configs/download",
                                    timeout=(3, 10),
                                    headers={"Accept": "text/plain"})
         response.raise_for_status()
@@ -169,7 +172,7 @@ class APIClient:
     def upload_config(self, config_content: str) -> Dict[str, Any]:
         """Upload a new agents.yaml configuration file."""
         files = {"file": ("agents.yaml", config_content, "text/plain")}
-        response = self.session.post(f"{self.base_url}/api/v1/configs/upload", 
+        response = self.session.post(f"{self.base_url}/api/configs/upload",
                                     files=files,
                                     timeout=(3, 10))
         response.raise_for_status()
