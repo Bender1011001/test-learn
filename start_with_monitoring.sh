@@ -31,18 +31,11 @@ if [ ! -d "backend" ] || [ ! -d "gui" ]; then
     exit 1
 fi
 
-# Install backend dependencies if needed
-if [ ! -f "backend/.deps_installed" ]; then
-    echo "Installing backend dependencies..."
-    pip install -r backend/requirements.txt
-    touch backend/.deps_installed
-fi
-
-# Install frontend dependencies if needed
-if [ ! -f "gui/.deps_installed" ]; then
-    echo "Installing frontend dependencies..."
-    pip install -r gui/requirements.txt
-    touch gui/.deps_installed
+# Install all dependencies if needed
+if [ ! -f ".deps_installed" ]; then
+    echo "Installing project dependencies..."
+    pip install -r requirements.txt
+    touch .deps_installed
 fi
 
 # Start the backend server

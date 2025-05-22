@@ -81,7 +81,6 @@ def init_config_data():
                 st.session_state.config_data = {
                     "workflow_settings": {
                         "default_workflow": "proposer_executor_review_loop",
-                        "logging_db_path": "logs.db",
                         "max_iterations": 10,
                         "default_proposer_model_id": "gpt-4o",
                         "default_reviewer_model_id": "claude-3-opus-20240229"
@@ -207,16 +206,13 @@ def render_global_settings_tab():
         col1, col2 = st.columns(2)
         
         with col1:
-            st.text_input("Default Workflow:", 
-                         value=workflow_settings.get('default_workflow', 'N/A'), 
-                         disabled=True)
-            st.text_input("Logging DB Path:", 
-                         value=workflow_settings.get('logging_db_path', 'N/A'), 
+            st.text_input("Default Workflow:",
+                         value=workflow_settings.get('default_workflow', 'N/A'),
                          disabled=True)
         
         with col2:
-            st.text_input("Max Iterations:", 
-                         value=str(workflow_settings.get('max_iterations', 'N/A')), 
+            st.text_input("Max Iterations:",
+                         value=str(workflow_settings.get('max_iterations', 'N/A')),
                          disabled=True)
             st.text_input("Default Proposer Model:", 
                          value=workflow_settings.get('default_proposer_model_id', 'N/A'), 

@@ -26,18 +26,11 @@ if not exist gui (
     exit /b 1
 )
 
-REM Install backend dependencies if needed
-if not exist backend\.deps_installed (
-    echo Installing backend dependencies...
-    pip install -r backend\requirements.txt
-    echo. > backend\.deps_installed
-)
-
-REM Install frontend dependencies if needed
-if not exist gui\.deps_installed (
-    echo Installing frontend dependencies...
-    pip install -r gui\requirements.txt
-    echo. > gui\.deps_installed
+REM Install all dependencies if needed
+if not exist .deps_installed (
+    echo Installing project dependencies...
+    pip install -r requirements.txt
+    echo. > .deps_installed
 )
 
 REM Start the backend server

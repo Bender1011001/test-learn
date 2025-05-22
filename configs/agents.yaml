@@ -1,6 +1,5 @@
 workflow_settings:
   default_workflow: "proposer_executor_review_loop"
-  logging_db_path: "logs.db"
   default_proposer_model_id: "mistralai/Mistral-7B-Instruct-v0.2"
   default_reviewer_model_id: "claude-3-opus-20240229"
   max_iterations: 10
@@ -29,6 +28,7 @@ agents:
     parameters:
       temperature: 0.3
       max_tokens: 1024
+      system_message: "You are an expert peer reviewer tasked with evaluating the quality and effectiveness of AI agent interactions. Your role is to provide constructive, detailed feedback on the Proposer agent's suggestions and the Executor agent's implementations. Your evaluations should be fair, balanced, and insightful, highlighting both strengths and areas for improvement. Always structure your feedback in a way that can be used for Direct Preference Optimization (DPO) training to improve the agents. Focus on clarity, correctness, efficiency, and overall effectiveness of the interactions."
 
 workflows:
   proposer_executor_review_loop:
