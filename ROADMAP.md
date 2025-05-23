@@ -13,16 +13,17 @@ The current release implements the "Walking Skeleton" version of the application
 - ✅ Log exploration and annotation
 - ✅ DPO training setup and monitoring
 - ✅ WebSocket support for real-time updates
+- ✅ Redis integration for PubSub (e.g., DPO training, workflow status/log updates)
 
 ## Near Term (Next 1-2 Releases)
 
 ### Walk-2: Add Celery/RabbitMQ + WebSocket feeds
 
-- 🔲 Celery integration for background task processing
+- 🔲 Celery integration for background task processing (may leverage existing Redis for message broking or introduce RabbitMQ)
   - Workflow execution as background tasks
   - DPO training as background tasks
   - Task monitoring and management
-- 🔲 RabbitMQ for message queuing
+- 🔲 RabbitMQ for message queuing (alternative/addition to Redis for Celery)
   - Reliable message delivery
   - Task distribution
   - Event-driven architecture
@@ -33,7 +34,7 @@ The current release implements the "Walking Skeleton" version of the application
 
 ### Walk-3: Observability & Hardening
 
-- 🔲 Redis session store for Streamlit
+- 🔲 Redis for advanced caching/session management (e.g., Streamlit session store)
   - Session persistence across restarts
   - Shared state in multi-worker deployments
 - 🔲 Comprehensive logging and monitoring

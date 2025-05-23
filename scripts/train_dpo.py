@@ -48,7 +48,8 @@ logger = logging.getLogger(__name__)
 
 # Default config
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_LORA_TARGET_MODULES = ["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+# Default LoRA target modules, aligned with dpo_trainer.py for Mistral-like models
+DEFAULT_LORA_TARGET_MODULES = ["q_proj", "k_proj", "v_proj", "o_proj"]
 
 
 def get_dpo_annotations(db, agent_type: str) -> List[Dict[str, Any]]:
