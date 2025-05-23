@@ -42,7 +42,7 @@ from ..core.services.workflow_manager import WorkflowManager
 from ..core.services.monitoring_service import get_monitoring_service
 
 # Import routers
-from .routers import workflows, configs, logs, dpo_training, metrics
+from .routers import workflows, configs, logs, dpo_training, metrics, tasks, feedback
 
 # Import middleware
 from .middleware.monitoring import MonitoringMiddleware, TimedRoute
@@ -100,6 +100,8 @@ app.include_router(configs.router, prefix=f"{api_prefix}/configs", tags=["config
 app.include_router(logs.router, prefix=f"{api_prefix}/logs", tags=["logs"])
 app.include_router(dpo_training.router, prefix=f"{api_prefix}/dpo", tags=["dpo"])
 app.include_router(metrics.router, prefix=f"{api_prefix}/metrics", tags=["metrics"])
+app.include_router(tasks.router, prefix=f"{api_prefix}/tasks", tags=["tasks"])
+app.include_router(feedback.router, prefix=f"{api_prefix}/feedback", tags=["feedback"])
 
 
 @app.get("/", include_in_schema=False)
@@ -122,6 +124,7 @@ async def workflow_websocket(websocket: WebSocket, workflow_run_id: str, db=Depe
     active_connections[workflow_run_id] = websocket
     
     # Get workflow manager and Redis service
+    from ..core.services.redis_service import get_redis_service
     config_manager, workflow_manager, db_manager, dpo_trainer = get_services(db)
     redis_service = await get_redis_service()
     
@@ -195,6 +198,7 @@ async def startup_event():
         logger.info("Services initialized")
         
         # Initialize and connect Redis service
+        from ..core.services.redis_service import get_redis_service
         redis_service = await get_redis_service()
         logger.info("Redis service initialized and connected")
         
@@ -230,6 +234,7 @@ async def shutdown_event():
     
     # Disconnect Redis service
     try:
+        from ..core.services.redis_service import get_redis_service
         redis_service = await get_redis_service()
         await redis_service.disconnect()
         logger.info("Redis service disconnected")

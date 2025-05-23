@@ -80,16 +80,16 @@ async def update_agent_config(
     # Convert request model to dict
     updated_config = request.model_dump(exclude_none=True)
     
-    success = config_manager.update_agent_config(agent_id, updated_config)
+    success = await config_manager.update_agent_config_async(agent_id, updated_config)
     
     if not success:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail=f"Failed to update agent {agent_id}"
         )
     
     # Save the configuration to file
-    success = config_manager.save_config()
+    success = await config_manager.save_config_async()
     
     if not success:
         raise HTTPException(
@@ -172,7 +172,7 @@ async def reload_config(
 ):
     """Reload configuration from file"""
     try:
-        config_manager.reload_config()
+        await config_manager.reload_config_async()
         return {"success": True}
     except Exception as e:
         logger.error(f"Error reloading configuration: {str(e)}")
@@ -226,7 +226,7 @@ async def upload_config(
         shutil.copy(temp_path, config_manager.config_path)
         
         # Reload the configuration
-        config_manager.reload_config()
+        await config_manager.reload_config_async()
         
         return {"success": True}
     

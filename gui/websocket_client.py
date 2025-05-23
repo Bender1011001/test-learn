@@ -6,6 +6,7 @@ import json
 import logging
 import random
 from typing import Callable, Dict, Any, Optional, List, Union
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -141,6 +142,9 @@ class RobustWebSocket:
     
     def _process_messages(self):
         """Process messages from the queue and deliver to user callback."""
+        last_log_time = datetime.now()
+        log_summary_interval = 5.0  # Summarize logs every 5 seconds
+
         while not self.stop_event.is_set():
             try:
                 # Block for 0.5 seconds, then check if we should stop
@@ -149,6 +153,14 @@ class RobustWebSocket:
                     # Parse JSON and deliver to user callback
                     try:
                         data = json.loads(message)
+                        # Log summary of messages periodically instead of every message
+                        now = datetime.now()
+                        time_diff = (now - last_log_time).total_seconds()
+                        if time_diff >= log_summary_interval:
+                            last_log_time = now
+                            logger.debug(f"Processed {self.message_queue.qsize() + 1} WebSocket messages in last {time_diff:.1f} seconds")
+                        
+                        # Deliver message to user callback
                         self.user_callback(data)
                     except json.JSONDecodeError:
                         logger.error(f"Invalid JSON in WebSocket message: {message[:100]}...")

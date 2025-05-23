@@ -121,45 +121,45 @@ class APIClient:
     
     def get_available_workflows(self) -> List[Dict[str, Any]]:
         """Get available workflow configurations."""
-        return self.get("api/v1/workflows/available")
+        return self.get("api/workflows/available")
     
     def start_workflow(self, workflow_id: str, initial_goal: str) -> Dict[str, Any]:
         """Start a new workflow execution."""
-        return self.post("api/v1/workflows/start", json={
+        return self.post("api/workflows/start", json={
             "workflow_id": workflow_id,
             "initial_goal": initial_goal
         })
     
     def get_workflow_status(self, run_id: str) -> Dict[str, Any]:
         """Get status of a workflow execution."""
-        return self.get(f"api/v1/workflows/{run_id}/status")
+        return self.get(f"api/workflows/{run_id}/status")
     
     def stop_workflow(self, run_id: str) -> Dict[str, Any]:
         """Stop a running workflow."""
-        return self.post(f"api/v1/workflows/{run_id}/stop")
+        return self.post(f"api/workflows/{run_id}/stop")
     
     def get_active_workflows(self) -> List[Dict[str, Any]]:
         """Get all active workflows."""
-        return self.get("api/v1/workflows/active")
+        return self.get("api/workflows/active")
     
     # Configuration Management
     
     def get_config_info(self) -> Dict[str, Any]:
         """Get configuration information."""
-        return self.get("api/v1/configs/info")
+        return self.get("api/configs/info")
     
     def get_agent_configs(self) -> Dict[str, Any]:
         """Get all agent configurations."""
-        return self.get("api/v1/configs/agents")
+        return self.get("api/configs/agents")
     
     def update_agent_config(self, agent_id: str, config_update: Dict[str, Any]) -> Dict[str, Any]:
         """Update a specific agent configuration."""
-        return self.put(f"api/v1/configs/agents/{agent_id}", json=config_update)
+        return self.put(f"api/configs/agents/{agent_id}", json=config_update)
     
     def get_saved_adapters(self, agent_type: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get saved DPO adapters, optionally filtered by agent type."""
         params = {"agent_type": agent_type} if agent_type else None
-        return self.get("api/v1/configs/adapters", params=params)
+        return self.get("api/configs/adapters", params=params)
     
     def download_config(self) -> str:
         """Download the agents.yaml configuration file as a string."""
@@ -180,7 +180,7 @@ class APIClient:
     
     # Log Management
     
-    def get_logs(self, 
+    def get_logs(self,
                  workflow_run_id: Optional[str] = None,
                  agent_name: Optional[str] = None,
                  agent_type: Optional[str] = None,
@@ -218,21 +218,21 @@ class APIClient:
         if end_time:
             params["end_time"] = end_time
             
-        return self.get("api/v1/logs", params=params)
+        return self.get("api/logs", params=params)
     
     def get_log_entry(self, log_id: int) -> Dict[str, Any]:
         """Get a specific log entry by ID."""
-        return self.get(f"api/v1/logs/{log_id}")
+        return self.get(f"api/logs/{log_id}")
     
-    def add_dpo_annotation(self, 
-                          log_id: int, 
+    def add_dpo_annotation(self,
+                          log_id: int,
                           rating: int,
-                          rationale: str, 
-                          chosen_prompt: str, 
+                          rationale: str,
+                          chosen_prompt: str,
                           rejected_prompt: str,
                           dpo_context: str) -> Dict[str, Any]:
         """Add a DPO annotation to a log entry."""
-        return self.post(f"api/v1/logs/{log_id}/annotate", json={
+        return self.post(f"api/logs/{log_id}/annotate", json={
             "rating": rating,
             "rationale": rationale,
             "chosen_prompt": chosen_prompt,
@@ -244,9 +244,9 @@ class APIClient:
     
     def get_dpo_ready_annotations(self, agent_type: str) -> Dict[str, Any]:
         """Get information about DPO-ready annotations for an agent type."""
-        return self.get(f"api/v1/dpo/annotations/{agent_type}")
+        return self.get(f"api/dpo/annotations/{agent_type}")
     
-    def start_dpo_training(self, 
+    def start_dpo_training(self,
                           agent_type: str,
                           base_model_id: str,
                           adapter_name: str,
@@ -260,12 +260,12 @@ class APIClient:
         if training_params:
             json_data["training_params"] = training_params
             
-        return self.post("api/v1/dpo/train", json=json_data)
+        return self.post("api/dpo/train", json=json_data)
     
     def get_dpo_job_status(self, job_id: str) -> Dict[str, Any]:
         """Get the status of a DPO training job."""
-        return self.get(f"api/v1/dpo/jobs/{job_id}")
+        return self.get(f"api/dpo/jobs/{job_id}")
     
     def cancel_dpo_job(self, job_id: str) -> Dict[str, Any]:
         """Cancel a DPO training job."""
-        return self.post(f"api/v1/dpo/jobs/{job_id}/cancel")
+        return self.post(f"api/dpo/jobs/{job_id}/cancel")

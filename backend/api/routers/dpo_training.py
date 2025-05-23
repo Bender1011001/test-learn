@@ -135,11 +135,15 @@ async def get_dpo_ready_annotations(
     
     # Get annotation info
     try:
-        count, samples = dpo_trainer.get_annotation_stats(agent_type)
+        # Use db_manager to get DPO-ready annotations asynchronously
+        annotations = await db_manager.get_dpo_ready_annotations(agent_type, use_cache=True)
+        count = len(annotations)
+        samples = annotations[:5] if annotations else []
+        
         return {
             "agent_type": agent_type,
             "dpo_ready_count": count,
-            "sample_annotations": samples[:5] if samples else []
+            "sample_annotations": samples
         }
     except Exception as e:
         logger.error(f"Error getting annotation stats: {str(e)}")
@@ -151,15 +155,17 @@ async def get_dpo_ready_annotations(
 
 @router.websocket("/ws/{job_id}")
 async def websocket_dpo_endpoint(
-    websocket: WebSocket, 
-    job_id: str, 
+    websocket: WebSocket,
+    job_id: str,
     db = Depends(get_db)
 ):
-    """WebSocket endpoint for streaming DPO training status and output."""
+    """WebSocket endpoint for streaming DPO training status and output using Redis PubSub."""
     await websocket.accept()
     
-    # Get DPO trainer
+    # Get DPO trainer and Redis service
     config_manager, workflow_manager, db_manager, dpo_trainer = get_services(db)
+    from ..dependencies import get_redis_service
+    redis_service = await get_redis_service()
     
     # Check if job exists
     status = dpo_trainer.get_training_job_status(job_id)
@@ -183,50 +189,43 @@ async def websocket_dpo_endpoint(
         "data": output
     }))
     
-    # Simple polling mechanism for updates
-    # NOTE: This is a temporary approach for the MVP only.
-    # In a production environment, this would be replaced with a proper event-driven approach:
-    # 1. Use Redis PubSub or a message broker like RabbitMQ to publish status updates
-    # 2. Subscribe to these events instead of polling the database
-    # 3. Implement proper backpressure handling and client-specific event filtering
-    # 4. See ROADMAP.md - this is scheduled for implementation in the next phase
+    # Define callback for status updates
+    async def on_status_update(data):
+        await websocket.send_text(json.dumps({
+            "type": "status",
+            "data": data
+        }))
+    
+    # Define callback for output updates
+    async def on_output_update(data):
+        # Check if we received new output
+        if "output" in data:
+            new_lines = [data["output"]]
+            await websocket.send_text(json.dumps({
+                "type": "output_append",
+                "data": new_lines
+            }))
+    
+    # Subscribe to status and output events
+    await redis_service.subscribe(EventChannel.DPO_STATUS, job_id, on_status_update)
+    await redis_service.subscribe(EventChannel.DPO_OUTPUT, job_id, on_output_update)
+    
     try:
+        # Keep the WebSocket connection open until a disconnect occurs
+        # or until the job is marked as completed or failed
         while True:
-            # Check for new status every second
             await asyncio.sleep(1)
             
+            # Check if job is still active
             new_status = dpo_trainer.get_training_job_status(job_id)
             if not new_status:
                 # Job might have been deleted
                 break
-            
-            # Check if status has changed
-            if new_status.get("status") != status.get("status") or new_status.get("progress") != status.get("progress"):
-                status = new_status
-                await websocket.send_text(json.dumps({
-                    "type": "status",
-                    "data": status
-                }))
-            
-            # Check for new output
-            new_output = dpo_trainer.get_training_job_output(job_id, max_lines=1)
-            if new_output and (not output or new_output[-1] != output[-1]):
-                # Send only the new lines
-                if output and len(output) > 0:
-                    output_set = set(output)
-                    new_lines = [line for line in new_output if line not in output_set]
-                else:
-                    new_lines = new_output
                 
-                if new_lines:
-                    await websocket.send_text(json.dumps({
-                        "type": "output_append",
-                        "data": new_lines
-                    }))
-                    output = new_output
-            
-            # If job is done, stop polling
-            if status.get("status") in ["completed", "failed"]:
+            # If job is done, stop after giving events a chance to be processed
+            if new_status.get("status") in ["completed", "failed"]:
+                # Wait a bit to ensure final events are processed
+                await asyncio.sleep(2)
                 break
     
     except WebSocketDisconnect:

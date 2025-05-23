@@ -90,6 +90,17 @@ class ConfigManager:
         except Exception as e:
             logger.error(f"Error loading configuration: {e}")
             raise
+    
+    async def reload_config_async(self) -> AgentsConfig:
+        """
+        Async version of reload_config
+        
+        Returns:
+            Loaded configuration
+        """
+        # This is a simple wrapper around the sync method since it's just file I/O
+        # In a real implementation, this would use aiofiles for true async file I/O
+        return self.reload_config()
 
     def save_config(self) -> bool:
         """Save configuration to file"""
@@ -109,6 +120,17 @@ class ConfigManager:
         except Exception as e:
             logger.error(f"Error saving configuration: {e}")
             return False
+    
+    async def save_config_async(self) -> bool:
+        """
+        Async version of save_config
+        
+        Returns:
+            True if configuration was saved successfully, False otherwise
+        """
+        # This is a simple wrapper around the sync method since it's just file I/O
+        # In a real implementation, this would use aiofiles for true async file I/O
+        return self.save_config()
 
     def get_agent_config(self, agent_id: str) -> Optional[AgentConfig]:
         """Get configuration for a specific agent"""
@@ -119,6 +141,33 @@ class ConfigManager:
         if agent_id not in self.config.agents:
             logger.error(f"Agent {agent_id} not found in configuration")
             return False
+    
+    async def add_saved_adapter_async(self, adapter: SavedAdapter) -> bool:
+        """
+        Async version of add_saved_adapter
+        
+        Args:
+            adapter: SavedAdapter object to add
+            
+        Returns:
+            True if adapter was added successfully, False otherwise
+        """
+        # This is a simple wrapper around the sync method since it's just in-memory operations
+        return self.add_saved_adapter(adapter)
+    
+    async def update_agent_config_async(self, agent_id: str, updated_config: Dict[str, Any]) -> bool:
+        """
+        Async version of update_agent_config
+        
+        Args:
+            agent_id: ID of the agent to update
+            updated_config: Dictionary with updated configuration values
+            
+        Returns:
+            True if agent configuration was updated successfully, False otherwise
+        """
+        # This is a simple wrapper around the sync method since it's just in-memory operations
+        return self.update_agent_config(agent_id, updated_config)
         
         try:
             # Get existing config

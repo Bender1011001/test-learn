@@ -86,7 +86,7 @@ async def get_logs(
     All filter parameters are optional
     """
     try:
-        logs = db_manager.get_logs(
+        logs = await db_manager.get_logs_async(
             workflow_id=workflow_id,
             agent_name=agent_name,
             agent_type=agent_type,
@@ -111,7 +111,7 @@ async def get_logs_summary(
 ):
     """Get summary statistics about logs"""
     try:
-        summary = db_manager.get_logs_summary()
+        summary = await db_manager.get_logs_summary_async()
         return summary
     except Exception as e:
         logger.error(f"Error getting log summary: {str(e)}")
@@ -124,7 +124,7 @@ async def get_log_by_id(
     db_manager: DBManager = Depends(get_db_manager)
 ):
     """Get a specific log entry by ID"""
-    log = db_manager.get_log_by_id(log_id)
+    log = await db_manager.get_log_by_id_async(log_id)
     
     if not log:
         raise HTTPException(status_code=404, detail=f"Log entry {log_id} not found")
@@ -138,7 +138,7 @@ async def get_annotation(
     db_manager: DBManager = Depends(get_db_manager)
 ):
     """Get annotation for a specific log entry"""
-    annotation = db_manager.get_annotation(log_id)
+    annotation = await db_manager.get_annotation_async(log_id)
     return annotation  # Can be None
 
 
@@ -151,7 +151,8 @@ async def save_annotation(
     # Convert request model to dict
     annotation_data = request.model_dump()
     
-    annotation_id = db_manager.save_annotation(annotation_data)
+    # Use async method for better performance
+    annotation_id = await db_manager.save_annotation_async(annotation_data)
     
     if not annotation_id:
         raise HTTPException(
@@ -162,12 +163,43 @@ async def save_annotation(
     return {"id": annotation_id, "success": True}
 
 
+class BatchAnnotationRequest(BaseModel):
+    """Model for batch annotation request"""
+    annotations: List[AnnotationRequest]
+
+
+@router.post("/annotations/batch", response_model=Dict[str, Any])
+async def batch_save_annotations(
+    request: BatchAnnotationRequest,
+    db_manager: DBManager = Depends(get_db_manager)
+):
+    """Save multiple annotations in a single transaction"""
+    # Convert request models to dicts
+    annotations_data = [ann.model_dump() for ann in request.annotations]
+    
+    # Use async batch method for better performance
+    result_ids = await db_manager.batch_save_annotations_async(annotations_data)
+    
+    # Count successful saves
+    success_count = sum(1 for id in result_ids if id is not None)
+    
+    return {
+        "success": success_count > 0,
+        "total": len(annotations_data),
+        "successful": success_count,
+        "failed": len(annotations_data) - success_count,
+        "ids": [id for id in result_ids if id is not None]
+    }
+
+
 @router.delete("/annotations/{annotation_id}", response_model=Dict[str, bool])
 async def delete_annotation(
     annotation_id: int,
     db_manager: DBManager = Depends(get_db_manager)
 ):
     """Delete an annotation"""
+    # We don't have an async version of delete_annotation yet, so we'll use the sync version
+    # In a real implementation, we would add an async version to DBManager
     success = db_manager.delete_annotation(annotation_id)
     
     if not success:
@@ -179,13 +211,38 @@ async def delete_annotation(
     return {"success": True}
 
 
+@router.delete("/annotations/batch", response_model=Dict[str, Any])
+async def batch_delete_annotations(
+    annotation_ids: List[int],
+    db_manager: DBManager = Depends(get_db_manager)
+):
+    """Delete multiple annotations in a single request"""
+    results = []
+    
+    # Process each deletion individually
+    # In a real implementation, we would add a batch_delete_annotations method to DBManager
+    for annotation_id in annotation_ids:
+        success = db_manager.delete_annotation(annotation_id)
+        results.append(success)
+    
+    # Count successful deletions
+    success_count = sum(1 for result in results if result)
+    
+    return {
+        "success": success_count > 0,
+        "total": len(annotation_ids),
+        "successful": success_count,
+        "failed": len(annotation_ids) - success_count
+    }
+
+
 @router.get("/annotations/dpo", response_model=List[Dict[str, Any]])
 async def get_dpo_annotations(
     agent_type: str,
     db_manager: DBManager = Depends(get_db_manager)
 ):
     """Get all annotations ready for DPO training for a specific agent type"""
-    annotations = db_manager.get_dpo_ready_annotations(agent_type)
+    annotations = await db_manager.get_dpo_ready_annotations(agent_type, use_cache=True)
     return annotations
 
 
@@ -201,7 +258,7 @@ async def export_dpo_data(
     Returns a text file with the specified format (currently only 'jsonl' is supported)
     """
     try:
-        data = db_manager.export_dpo_data(agent_type, format)
+        data = await db_manager.export_dpo_data(agent_type, format, use_cache=True)
         
         # Create a response with the appropriate content type
         from fastapi.responses import Response

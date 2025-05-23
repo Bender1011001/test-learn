@@ -13,12 +13,27 @@ agents:
     parameters:
       temperature: 0.7
       max_tokens: 2048
+      # Autonomous task generation settings
+      generation_rate_limit: 10  # tasks per minute
+      min_complexity_score: 2.0
+      max_complexity_score: 9.0
+      diversity_threshold: 0.7
+      preferred_categories: ["coding", "reasoning", "creative", "analytical", "problem_solving", "data_analysis"]
+      preferred_difficulties: ["beginner", "intermediate", "advanced"]
+      enable_adaptive_difficulty: true
+      enable_feedback_learning: true
+      success_rate_target: 0.7
   
   Executor:
     name: "ExecutorAgent_Main"
     class_path: "camel.agents.executor.ExecutorAgent"
     parameters:
       use_system_commands: true
+      # Task execution settings
+      max_execution_time: 300  # seconds
+      enable_code_execution: false  # for security
+      supported_languages: ["python", "javascript", "java", "cpp", "go"]
+      quality_scoring_enabled: true
   
   PeerReviewer:
     name: "PeerReviewer_GPT4o_Strict"
@@ -37,13 +52,46 @@ workflows:
     settings:
       max_iterations: 10
 
+  autonomous_task_generation:
+    description: "Autonomous task generation workflow where the Proposer continuously creates diverse tasks based on configured parameters and feedback."
+    agent_sequence: ["Proposer"]
+    settings:
+      continuous_generation: true
+      generation_rate: 5  # tasks per minute
+      max_queue_size: 50
+      quality_threshold: 6.0
+      diversity_enforcement: true
+      adaptive_difficulty: true
+      feedback_integration: true
+
+  task_execution_workflow:
+    description: "Complete task execution workflow including execution by Executor and review by PeerReviewer."
+    agent_sequence: ["Executor", "PeerReviewer"]
+    settings:
+      max_execution_time: 300  # seconds
+      require_peer_review: true
+      auto_feedback_generation: true
+      quality_scoring: true
+
+  autonomous_learning_loop:
+    description: "Complete autonomous learning loop combining task generation, execution, review, and feedback integration for continuous improvement."
+    agent_sequence: ["Proposer", "Executor", "PeerReviewer"]
+    settings:
+      continuous_operation: true
+      generation_rate: 3  # tasks per minute
+      max_concurrent_tasks: 5
+      feedback_learning_enabled: true
+      adaptive_difficulty_enabled: true
+      performance_tracking: true
+      auto_dpo_training: true
+
 saved_adapters:
   proposer_adapter_1:
     id: "proposer_adapter_1"
     name: "Proposer DPO May 2025"
     base_model_id: "mistralai/Mistral-7B-Instruct-v0.2"
     creation_date: "2025-05-20"
-    path: "models/proposer_dpo_20250520_1"
+    path: "models/adapters/Proposer/proposer_dpo_20250520_1"
     agent_type: "Proposer"
     description: "Fine-tuned adapter for better command suggestions"
   
@@ -52,7 +100,7 @@ saved_adapters:
     name: "Proposer DPO April 2025"
     base_model_id: "mistralai/Mistral-7B-Instruct-v0.2"
     creation_date: "2025-04-15"
-    path: "models/proposer_dpo_20250419_1"
+    path: "models/adapters/Proposer/proposer_dpo_20250419_1"
     agent_type: "Proposer"
     description: "Earlier adapter focusing on clarity of instructions"
   
@@ -61,6 +109,6 @@ saved_adapters:
     name: "Reviewer DPO May 2025"
     base_model_id: "claude-3-opus-20240229"
     creation_date: "2025-05-20"
-    path: "models/reviewer_dpo_20250520_1"
+    path: "models/adapters/PeerReviewer/reviewer_dpo_20250520_1"
     agent_type: "PeerReviewer"
     description: "Fine-tuned adapter for more constructive feedback"

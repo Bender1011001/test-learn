@@ -85,7 +85,7 @@ async def get_workflow_status(
     workflow_manager: WorkflowManager = Depends(get_workflow_manager)
 ):
     """Get status of a workflow execution"""
-    status = workflow_manager.get_workflow_status(run_id)
+    status = await workflow_manager.get_workflow_status_async(run_id)
     
     if not status:
         raise HTTPException(status_code=404, detail=f"Workflow run {run_id} not found")
@@ -99,11 +99,11 @@ async def stop_workflow(
     workflow_manager: WorkflowManager = Depends(get_workflow_manager)
 ):
     """Stop a running workflow execution"""
-    success = workflow_manager.stop_workflow(run_id)
+    success = await workflow_manager.stop_workflow_async(run_id)
     
     if not success:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail=f"Failed to stop workflow run {run_id}"
         )
     
@@ -115,7 +115,7 @@ async def get_active_workflows(
     workflow_manager: WorkflowManager = Depends(get_workflow_manager)
 ):
     """Get all active workflow executions"""
-    return workflow_manager.get_active_workflows()
+    return await workflow_manager.get_active_workflows_async()
 
 
 @router.get("/available", response_model=List[Dict[str, Any]])

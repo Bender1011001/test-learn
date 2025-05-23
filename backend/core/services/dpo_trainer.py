@@ -34,7 +34,12 @@ from .db_manager import DBManager
 from .redis_service import RedisService, EventChannel
 
 # Default settings for DPO training
-DEFAULT_LORA_TARGET_MODULES = ["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+# Default LoRA target modules for different model architectures
+# Mistral models typically use these four projection layers
+DEFAULT_LORA_TARGET_MODULES = ["q_proj", "k_proj", "v_proj", "o_proj"]
+
+# For reference:
+# Llama-style models would use: ["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 
 
 class DPOTrainer:
